@@ -13,7 +13,7 @@ create extension if not exists "pgcrypto";
 create table if not exists profiles (
   id uuid references auth.users(id) on delete cascade primary key,
   name text not null,
-  role text not null default 'researcher' check (role in ('staff','researcher')),
+  role text not null default 'researcher' check (role in ('staff','researcher','supervisor')),
   created_at timestamptz default now()
 );
 
@@ -70,7 +70,7 @@ create table if not exists seed_requests (
   requester_id uuid references profiles(id) not null,
   requester_name text not null,
   qty_requested numeric not null,
-  status text not null default 'pending' check (status in ('pending','fulfilled','rejected')),
+  status text not null default 'pending' check (status in ('pending','approved','fulfilled','rejected')),
   note text,
   processed_by uuid references profiles(id),
   processed_at timestamptz,
@@ -115,6 +115,47 @@ create policy "req_insert_self" on seed_requests for insert with check (auth.uid
 create policy "req_update_staff" on seed_requests for update using (
   exists (select 1 from profiles where id = auth.uid() and role = 'staff')
 );
+
+-- ============================================================
+-- 마이그레이션: 승인자(supervisor) 역할 및 승인 워크플로우 추가
+-- 흐름: 연구원 요청(pending) -> 승인자 승인(approved)/거절(rejected)
+--       -> 담당자가 승인된 건만 처리(fulfilled)
+-- ============================================================
+
+-- 역할에 supervisor 추가
+alter table profiles drop constraint if exists profiles_role_check;
+alter table profiles add constraint profiles_role_check check (role in ('staff','researcher','supervisor'));
+
+-- 요청 상태에 approved 추가 + 승인 정보 컬럼
+alter table seed_requests drop constraint if exists seed_requests_status_check;
+alter table seed_requests add constraint seed_requests_status_check check (status in ('pending','approved','fulfilled','rejected'));
+alter table seed_requests add column if not exists approved_by uuid references profiles(id);
+alter table seed_requests add column if not exists approved_at timestamptz;
+
+-- 요청 상태 변경(승인/거절/처리)은 담당자뿐 아니라 승인자도 할 수 있도록 정책 교체
+drop policy if exists "req_update_staff" on seed_requests;
+drop policy if exists "req_update_staff_or_supervisor" on seed_requests;
+create policy "req_update_staff_or_supervisor" on seed_requests for update using (
+  exists (select 1 from profiles where id = auth.uid() and role in ('staff','supervisor'))
+);
+
+-- ============================================================
+-- 마이그레이션: 종자 요청에 수량 단위(g/립) 추가
+-- 이미 schema.sql을 실행한 적이 있다면, 아래 부분만 SQL Editor에서 추가로 실행하세요.
+-- ============================================================
+alter table seed_requests add column if not exists qty_unit text not null default 'g' check (qty_unit in ('g','립'));
+
+-- ============================================================
+-- 테이블 접근 권한 (GRANT)
+-- Supabase 프로젝트 생성 시 "Automatically expose new tables"를 꺼두었다면
+-- (권장 설정입니다) 아래 GRANT 구문이 반드시 필요합니다.
+-- RLS 정책은 "행 단위" 권한이고, 이 GRANT는 그 이전 단계인 "테이블 자체 접근 권한"입니다.
+-- ============================================================
+grant usage on schema public to authenticated, anon;
+grant select, insert, update, delete on public.profiles to authenticated;
+grant select, insert, update, delete on public.seeds to authenticated;
+grant select, insert, update, delete on public.seed_transactions to authenticated;
+grant select, insert, update, delete on public.seed_requests to authenticated;
 
 -- ============================================================
 -- 참고: 처음 가입한 사람은 모두 'researcher'(연구원)로 시작합니다.

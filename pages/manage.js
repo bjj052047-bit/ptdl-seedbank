@@ -22,6 +22,7 @@ export default function ManagePage() {
   const [busy, setBusy] = useState(false);
 
   const [bulkText, setBulkText] = useState('');
+  const [duplicateMode, setDuplicateMode] = useState('skip'); // 'skip' | 'overwrite'
   const [bulkMsg, setBulkMsg] = useState(null);
   const [bulkBusy, setBulkBusy] = useState(false);
 
@@ -163,14 +164,17 @@ export default function ManagePage() {
 
     setBulkBusy(true);
     let workingSeeds = [...allSeeds]; // 붙여넣은 안에서 부모->자식 순서로 이어지는 걸 지원하기 위한 로컬 캐시
-    let added = 0, skipped = 0, warnings = 0;
+    let added = 0, updated = 0, skipped = 0, warnings = 0;
 
     for (const line of lines) {
       const cols = line.split('\t');
       const code = (cols[0] || '').trim();
-      if (!code || workingSeeds.some((s) => s.code === code)) { skipped++; continue; }
+      if (!code) { skipped++; continue; }
       const parentCode = (cols[10] || '').trim();
       if (parentCode === code) { skipped++; continue; }
+
+      const existing = workingSeeds.find((s) => s.code === code);
+      if (existing && duplicateMode === 'skip') { skipped++; continue; }
 
       const rowQty = Number((cols[6] || '').trim()) || 0;
       const rowLineage = computeLineage({
@@ -201,6 +205,20 @@ export default function ManagePage() {
         notes: rowLineage.error ? `${(cols[14] || '').trim()} [주의: 개체번호 누락으로 Pedigree 미계산]`.trim() : (cols[14] || '').trim(),
       };
 
+      if (existing && duplicateMode === 'overwrite') {
+        const { data: updatedSeed, error } = await supabase.from('seeds').update(record).eq('id', existing.id).select().single();
+        if (error) { skipped++; continue; }
+        if (Number(existing.qty_g) !== rowQty) {
+          await supabase.from('seed_transactions').insert({
+            seed_id: existing.id, type: '정정', qty: rowQty - Number(existing.qty_g), qty_after: rowQty,
+            by_user: profile.id, by_name: profile.name, note: '일괄 등록(덮어쓰기)으로 재고 정정',
+          });
+        }
+        workingSeeds = workingSeeds.map((s) => (s.id === existing.id ? updatedSeed : s));
+        updated++;
+        continue;
+      }
+
       const { data: inserted, error } = await supabase.from('seeds').insert(record).select().single();
       if (error) { skipped++; continue; }
       await supabase.from('seed_transactions').insert({
@@ -213,7 +231,7 @@ export default function ManagePage() {
 
     setBulkMsg({
       type: 'ok',
-      text: `${added}건 등록 완료, ${skipped}건 건너뜀 (코드 중복·자기참조·빈 값 등)${warnings ? `, ${warnings}건은 개체번호 누락으로 Pedigree 미계산` : ''}.`,
+      text: `신규 ${added}건 등록, 덮어쓰기 ${updated}건, 건너뜀 ${skipped}건 (자기참조·빈 값 등)${warnings ? `, ${warnings}건은 개체번호 누락으로 Pedigree 미계산` : ''}.`,
     });
     setBulkText('');
     loadSeeds();
@@ -315,6 +333,19 @@ export default function ManagePage() {
             style={{ minHeight: 140, fontFamily: 'IBM Plex Mono, monospace', fontSize: 12.5 }}
             placeholder={"RIC-2024-001\t벼\t새일미\tOryza sativa\t2024\t냉장고1-선반1-01\t1200\t농촌진흥청\t2021\t세종 시험포장\tRIC-2021-003\t2\t\t\t"}
           />
+          <div style={{ marginTop: 10, marginBottom: 10 }}>
+            <label style={{ marginBottom: 6 }}>기존에 등록된 코드와 겹칠 경우</label>
+            <div style={{ display: 'flex', gap: 14 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 400, fontSize: 13 }}>
+                <input type="radio" checked={duplicateMode === 'skip'} onChange={() => setDuplicateMode('skip')} style={{ width: 'auto' }} />
+                기존 데이터 유지 (건너뜀)
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 400, fontSize: 13 }}>
+                <input type="radio" checked={duplicateMode === 'overwrite'} onChange={() => setDuplicateMode('overwrite')} style={{ width: 'auto' }} />
+                덮어쓰기 (붙여넣은 내용으로 교체)
+              </label>
+            </div>
+          </div>
           <div style={{ marginTop: 10 }}>
             <button className="btn btn-primary" onClick={handleBulkImport} disabled={bulkBusy}>{bulkBusy ? '등록 중...' : '붙여넣은 내용 등록하기'}</button>
           </div>

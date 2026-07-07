@@ -2,6 +2,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { supabase } from '../lib/supabaseClient';
 
+const ROLE_LABEL = { staff: '담당자', supervisor: '승인자', researcher: '연구원' };
+
 export default function Nav({ profile, isStaff }) {
   const router = useRouter();
 
@@ -33,8 +35,8 @@ export default function Nav({ profile, isStaff }) {
         </div>
         {profile && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span className={isStaff ? 'staff-badge' : 'role-badge'}>
-              {isStaff ? '담당자' : '연구원'} · {profile.name}
+            <span className={profile.role === 'researcher' ? 'role-badge' : 'staff-badge'}>
+              {ROLE_LABEL[profile.role] || profile.role} · {profile.name}
             </span>
             <button className="btn btn-ghost" style={{ padding: '6px 12px', fontSize: 12 }} onClick={handleLogout}>
               로그아웃
