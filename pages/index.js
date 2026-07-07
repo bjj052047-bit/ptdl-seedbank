@@ -23,8 +23,9 @@ export default function SearchPage() {
 
   useEffect(() => {
     if (loading) return;
-    if (!session) router.replace('/login');
-  }, [session, loading, router]);
+    if (!session) { router.replace('/login'); return; }
+    if (!profile) { router.replace('/welcome'); }
+  }, [session, profile, loading, router]);
 
   const runSearch = useCallback(async (q) => {
     setSearching(true);
@@ -72,7 +73,7 @@ export default function SearchPage() {
     setDetailLoading(false);
   }
 
-  if (loading || !session) {
+  if (loading || !session || !profile) {
     return <div className="wrap"><p>불러오는 중...</p></div>;
   }
 

@@ -9,10 +9,11 @@ export default function RequestsPage() {
 
   useEffect(() => {
     if (loading) return;
-    if (!session) router.replace('/login');
-  }, [session, loading, router]);
+    if (!session) { router.replace('/login'); return; }
+    if (!profile) { router.replace('/welcome'); }
+  }, [session, profile, loading, router]);
 
-  if (loading || !session) return <div className="wrap"><p>불러오는 중...</p></div>;
+  if (loading || !session || !profile) return <div className="wrap"><p>불러오는 중...</p></div>;
 
   return (
     <div className="wrap">
