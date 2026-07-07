@@ -16,6 +16,7 @@ export default function SearchPage() {
   const { session, profile, isStaff, loading } = useProfile();
 
   const [query, setQuery] = useState('');
+  const [sortOrder, setSortOrder] = useState('desc'); // 수확연도 내림차순(desc)/오름차순(asc)
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const [selected, setSelected] = useState(null); // 선택된 종자 상세 (lineage 포함)
@@ -27,9 +28,9 @@ export default function SearchPage() {
     if (!profile) { router.replace('/welcome'); }
   }, [session, profile, loading, router]);
 
-  const runSearch = useCallback(async (q) => {
+  const runSearch = useCallback(async (q, order) => {
     setSearching(true);
-    let req = supabase.from('seeds').select('*').order('harvest_year', { ascending: false }).limit(200);
+    let req = supabase.from('seeds').select('*').order('harvest_year', { ascending: order === 'asc' }).limit(200);
     if (q.trim()) {
       req = req.or(`code.ilike.%${q.trim()}%,variety.ilike.%${q.trim()}%`);
     }
@@ -40,9 +41,9 @@ export default function SearchPage() {
 
   useEffect(() => {
     if (!session) return;
-    const t = setTimeout(() => runSearch(query), 250); // 입력 디바운스
+    const t = setTimeout(() => runSearch(query, sortOrder), 250); // 입력 디바운스
     return () => clearTimeout(t);
-  }, [query, session, runSearch]);
+  }, [query, sortOrder, session, runSearch]);
 
   async function openDetail(seed) {
     setDetailLoading(true);
@@ -81,13 +82,17 @@ export default function SearchPage() {
     <div className="wrap">
       <Nav profile={profile} isStaff={isStaff} />
 
-      <div className="field" style={{ marginBottom: 16 }}>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
         <input
           type="text"
           placeholder="종자 코드 또는 품종명으로 검색 (예: RIC-2023-014, 밀크씨슬)"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
+        <select value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} style={{ maxWidth: 220 }}>
+          <option value="desc">수확연도 내림차순 (최신순)</option>
+          <option value="asc">수확연도 오름차순 (오래된순)</option>
+        </select>
       </div>
 
       <div className="mono" style={{ fontSize: 12.5, color: '#5c574a', marginBottom: 10 }}>
