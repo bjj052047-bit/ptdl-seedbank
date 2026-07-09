@@ -342,3 +342,48 @@ grant usage on schema public to authenticated, anon;
 grant select on public.beds to authenticated;
 grant select, insert, delete on public.bed_reservations to authenticated;
 -- ============================================================
+
+-- ============================================================
+-- 마이그레이션: 배드 예약 - 작물/비고 분리, 승인 절차, 예약 수정 허용
+-- 이미 위쪽 schema.sql을 한 번 실행한 적이 있다면,
+-- Supabase SQL Editor에 이 블록부터 끝까지만 새로 붙여넣고 실행하면 됩니다.
+-- ============================================================
+
+-- ------------------------------------------------------------
+-- 1) bed_reservations: 재배 작물 / 비고 컬럼 + 승인 상태 추가
+--    (기존 'purpose' 컬럼은 이제 '용도' 전용으로 사용)
+-- ------------------------------------------------------------
+alter table bed_reservations add column if not exists crop text;
+alter table bed_reservations add column if not exists notes text;
+
+alter table bed_reservations add column if not exists status text not null default 'pending';
+alter table bed_reservations drop constraint if exists bed_reservations_status_check;
+alter table bed_reservations add constraint bed_reservations_status_check check (status in ('pending','approved','rejected'));
+alter table bed_reservations add column if not exists approved_by uuid references profiles(id);
+alter table bed_reservations add column if not exists approved_at timestamptz;
+
+-- 이미 등록되어 있던 예약(마이그레이션 이전 데이터)은 자동으로 승인 처리
+-- (이 UPDATE는 한 번만 실행되면 되고, 이후 새로 등록되는 예약만 'pending'으로 시작합니다)
+update bed_reservations set status = 'approved' where status = 'pending';
+
+-- 예약 수정(본인 정보 변경) + 승인/거절(담당자·승인자)을 위한 UPDATE 정책
+drop policy if exists "bed_resv_update_self_or_admin" on bed_reservations;
+create policy "bed_resv_update_self_or_admin" on bed_reservations for update using (
+  auth.uid() = user_id
+  or exists (select 1 from profiles where id = auth.uid() and role in ('staff','supervisor'))
+);
+
+-- ------------------------------------------------------------
+-- 2) lab_reservations: 예약 수정을 위한 UPDATE 정책 추가
+--    (기존에는 select/insert/delete 정책만 있었고 update가 없어 수정이 불가능했음)
+-- ------------------------------------------------------------
+drop policy if exists "resv_update_self_or_admin" on lab_reservations;
+create policy "resv_update_self_or_admin" on lab_reservations for update using (
+  auth.uid() = user_id
+  or exists (select 1 from profiles where id = auth.uid() and role in ('staff','supervisor'))
+);
+
+grant usage on schema public to authenticated, anon;
+grant select, insert, update, delete on public.bed_reservations to authenticated;
+grant select, insert, update, delete on public.lab_reservations to authenticated;
+-- ============================================================

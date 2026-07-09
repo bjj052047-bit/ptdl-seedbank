@@ -177,17 +177,22 @@ nav.tabs a.active {
 .bed-form-row .field { margin-bottom: 0; min-width: 160px; }
 
 .cal-grid-mini {
-  display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px;
+  display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px;
 }
 .cal-cell-mini {
-  background: #fff; border-radius: 5px; border: 1px solid var(--line);
-  min-height: 40px; padding: 3px 4px; text-align: left; cursor: default;
-  display: flex; flex-direction: column; gap: 1px;
+  background: #fff; border-radius: 6px; border: 1.5px solid var(--line);
+  min-height: 80px; padding: 6px 8px; text-align: left; cursor: pointer;
+  display: flex; flex-direction: column; gap: 3px; width: 100%;
+  font-family: 'Inter', sans-serif;
 }
-.cal-cell-mini.empty { background: transparent; border: none; }
+.cal-cell-mini:hover { border-color: var(--green-mid); }
+.cal-cell-mini.empty { background: transparent; border: none; cursor: default; }
 .cal-cell-mini.today { border-color: var(--wheat); border-width: 2px; }
-.cal-cell-mini .cal-date { font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 700; }
+.cal-cell-mini .cal-date { font-family: 'IBM Plex Mono', monospace; font-size: 14px; font-weight: 700; }
 .cal-cell-mini.occupied { background: rgba(122,59,70,0.1); border-color: var(--plum); }
+.cal-cell-mini.occupied-pending { background: rgba(201,162,75,0.16); border-color: var(--wheat); }
+.cal-cell-mini.in-range { background: rgba(63,93,58,0.1); }
+.cal-cell-mini.range-edge { border-color: var(--green-deep); border-width: 2px; }
 .cal-cell-mini .cal-occ-count {
-  font-size: 9px; font-weight: 700; color: var(--plum);
+  font-size: 11px; font-weight: 700; color: var(--plum);
 }

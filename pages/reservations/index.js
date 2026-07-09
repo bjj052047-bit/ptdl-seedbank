@@ -44,6 +44,14 @@ export default function ReservationsPage() {
   const [busy, setBusy] = useState(false);
   const [actingId, setActingId] = useState(null);
 
+  // 나의 예약 내역 - 인라인 수정
+  const [editingId, setEditingId] = useState(null);
+  const [editDate, setEditDate] = useState('');
+  const [editStartHour, setEditStartHour] = useState(9);
+  const [editEndHour, setEditEndHour] = useState(10);
+  const [editPurpose, setEditPurpose] = useState('');
+  const [editMsg, setEditMsg] = useState(null);
+
   useEffect(() => {
     if (loading) return;
     if (!session) { router.replace('/login'); return; }
@@ -182,6 +190,41 @@ export default function ReservationsPage() {
     setActingId(null);
   }
 
+  function startEdit(r) {
+    setEditingId(r.id);
+    setEditDate(r.reservation_date);
+    setEditStartHour(r.start_hour);
+    setEditEndHour(r.end_hour);
+    setEditPurpose(r.purpose || '');
+    setEditMsg(null);
+  }
+  function cancelEdit() { setEditingId(null); setEditMsg(null); }
+
+  async function saveEdit(r) {
+    setEditMsg(null);
+    const sh = Number(editStartHour);
+    const eh = Number(editEndHour);
+    if (!editDate) { setEditMsg({ type: 'err', text: '날짜를 선택하세요.' }); return; }
+    if (eh <= sh) { setEditMsg({ type: 'err', text: '종료 시간은 시작 시간보다 늦어야 합니다.' }); return; }
+
+    const { error } = await supabase.from('lab_reservations').update({
+      reservation_date: editDate,
+      start_hour: sh,
+      end_hour: eh,
+      purpose: editPurpose.trim(),
+    }).eq('id', r.id);
+    if (error) {
+      const msg = error.code === '23P01'
+        ? '그 시간대는 이미 다른 예약과 겹칩니다. 다른 시간으로 바꿔주세요.'
+        : `저장 실패: ${error.message}`;
+      setEditMsg({ type: 'err', text: msg });
+      return;
+    }
+    setEditingId(null);
+    await loadReservations(selectedLab, viewYear, viewMonth);
+    await loadMyReservations();
+  }
+
   if (loading || !session || !profile || profile.status !== 'approved') {
     return <div className="wrap"><p>불러오는 중...</p></div>;
   }
@@ -311,15 +354,42 @@ export default function ReservationsPage() {
             <thead><tr><th>실험실</th><th>날짜</th><th>시간</th><th>용도</th><th></th></tr></thead>
             <tbody>
               {myReservations.map((r) => (
-                <tr key={r.id}>
-                  <td>{LABS.find((l) => l.id === r.lab_id)?.name || r.lab_id}</td>
-                  <td className="mono">{r.reservation_date}</td>
-                  <td className="mono">{pad2(r.start_hour)}:00~{pad2(r.end_hour === 24 ? 0 : r.end_hour)}:00</td>
-                  <td>{r.purpose || '-'}</td>
-                  <td>
-                    <button className="btn btn-danger" style={{ padding: '3px 9px', fontSize: 11.5 }} disabled={actingId === r.id} onClick={() => handleCancel(r)}>취소</button>
-                  </td>
-                </tr>
+                editingId === r.id ? (
+                  <tr key={r.id}>
+                    <td colSpan={5}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 2fr auto auto', gap: 8, alignItems: 'end', padding: '8px 0' }}>
+                        <div className="field" style={{ margin: 0 }}><label>날짜</label><input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} /></div>
+                        <div className="field" style={{ margin: 0 }}>
+                          <label>시작 시간</label>
+                          <select value={editStartHour} onChange={(e) => setEditStartHour(e.target.value)}>
+                            {HOURS.map((h) => <option key={h} value={h}>{pad2(h)}:00</option>)}
+                          </select>
+                        </div>
+                        <div className="field" style={{ margin: 0 }}>
+                          <label>종료 시간</label>
+                          <select value={editEndHour} onChange={(e) => setEditEndHour(e.target.value)}>
+                            {Array.from({ length: 24 }, (_, i) => i + 1).map((h) => <option key={h} value={h}>{pad2(h === 24 ? 0 : h)}:00</option>)}
+                          </select>
+                        </div>
+                        <div className="field" style={{ margin: 0 }}><label>용도</label><input value={editPurpose} onChange={(e) => setEditPurpose(e.target.value)} /></div>
+                        <button className="btn btn-primary" style={{ padding: '9px 14px' }} onClick={() => saveEdit(r)}>저장</button>
+                        <button className="btn btn-ghost" style={{ padding: '9px 14px' }} onClick={cancelEdit}>취소</button>
+                      </div>
+                      {editMsg && <div className={`msg ${editMsg.type}`}>{editMsg.text}</div>}
+                    </td>
+                  </tr>
+                ) : (
+                  <tr key={r.id}>
+                    <td>{LABS.find((l) => l.id === r.lab_id)?.name || r.lab_id}</td>
+                    <td className="mono">{r.reservation_date}</td>
+                    <td className="mono">{pad2(r.start_hour)}:00~{pad2(r.end_hour === 24 ? 0 : r.end_hour)}:00</td>
+                    <td>{r.purpose || '-'}</td>
+                    <td style={{ display: 'flex', gap: 6 }}>
+                      <button className="btn btn-ghost" style={{ padding: '3px 9px', fontSize: 11.5 }} onClick={() => startEdit(r)}>수정</button>
+                      <button className="btn btn-danger" style={{ padding: '3px 9px', fontSize: 11.5 }} disabled={actingId === r.id} onClick={() => handleCancel(r)}>취소</button>
+                    </td>
+                  </tr>
+                )
               ))}
             </tbody>
           </table>
