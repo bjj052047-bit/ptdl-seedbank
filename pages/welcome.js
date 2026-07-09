@@ -16,14 +16,14 @@ export default function WelcomePage() {
         router.replace('/login');
         return;
       }
-      // 이미 프로필이 있다면 이 페이지에 있을 필요가 없으니 바로 이동
+      // 이미 프로필이 있다면 이 페이지에 있을 필요가 없으니 상태에 맞는 곳으로 바로 이동
       const { data: profile } = await supabase
         .from('profiles')
-        .select('id')
+        .select('id, status')
         .eq('id', data.session.user.id)
         .maybeSingle();
       if (profile) {
-        router.replace('/');
+        router.replace(profile.status === 'approved' ? '/' : '/pending');
         return;
       }
       setChecking(false);
@@ -45,13 +45,13 @@ export default function WelcomePage() {
     }
     const { error } = await supabase
       .from('profiles')
-      .insert({ id: data.session.user.id, name: name.trim(), role: 'researcher' });
+      .insert({ id: data.session.user.id, name: name.trim(), email: data.session.user.email, role: 'researcher' });
     if (error) {
       setMsg({ type: 'err', text: `저장 실패: ${error.message}` });
       setBusy(false);
       return;
     }
-    router.push('/');
+    router.push('/pending');
   }
 
   if (checking) {

@@ -66,7 +66,8 @@ export default function RequestsPage() {
   useEffect(() => {
     if (loading) return;
     if (!session) { router.replace('/login'); return; }
-    if (!profile) { router.replace('/welcome'); }
+    if (!profile) { router.replace('/welcome'); return; }
+    if (profile.status !== 'approved') { router.replace('/pending'); }
   }, [session, profile, loading, router]);
 
   const loadRequests = useCallback(async () => {
@@ -237,7 +238,7 @@ export default function RequestsPage() {
     );
   }
 
-  if (loading || !session || !profile) return <div className="wrap"><p>불러오는 중...</p></div>;
+  if (loading || !session || !profile || profile.status !== 'approved') return <div className="wrap"><p>불러오는 중...</p></div>;
 
   const myRequests = requests.filter((r) => r.requester_id === profile.id);
   const awaitingApproval = requests.filter((r) => r.status === 'pending');
@@ -245,7 +246,7 @@ export default function RequestsPage() {
 
   return (
     <div className="wrap">
-      <Nav profile={profile} isStaff={isStaff} />
+      <Nav profile={profile} isStaff={isStaff} isSupervisor={isSupervisor} />
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         <div className="card">

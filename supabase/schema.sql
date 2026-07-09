@@ -163,3 +163,101 @@ grant select, insert, update, delete on public.seed_requests to authenticated;
 -- 해당 계정의 role 값을 'researcher' -> 'staff' 로 직접 바꿔주세요.
 -- (이 작업은 프로젝트 소유자만 할 수 있어 안전합니다)
 -- ============================================================
+
+-- ============================================================
+-- 마이그레이션: 연구실 통합 포털 확장
+--  1) 가입 승인 시스템 (profiles.status)
+--  2) 실험실 예약 시스템 (labs, lab_reservations)
+-- 이미 위쪽 schema.sql을 한 번 실행한 적이 있다면,
+-- Supabase SQL Editor에 이 블록부터 끝까지만 새로 붙여넣고 실행하면 됩니다.
+-- ============================================================
+
+-- ------------------------------------------------------------
+-- 1) 가입 승인 시스템
+-- ------------------------------------------------------------
+
+-- 이메일도 같이 저장해서, 관리자가 승인 화면에서 "누가 가입했는지" 알아보기 쉽게 함
+alter table profiles add column if not exists email text;
+
+-- 가입 승인 상태: pending(대기) -> approved(승인) 또는 rejected(거절)
+alter table profiles add column if not exists status text not null default 'pending';
+alter table profiles drop constraint if exists profiles_status_check;
+alter table profiles add constraint profiles_status_check check (status in ('pending','approved','rejected'));
+
+-- 이미 활동 중이던 기존 계정들은 이번 마이그레이션으로 막히지 않도록 한 번만 승인 처리
+-- (이 UPDATE는 지금 한 번만 실행되면 되고, 이후 새로 가입하는 사람만 'pending'으로 시작합니다)
+update profiles set status = 'approved' where status = 'pending';
+
+-- 담당자(staff)·승인자(supervisor)는 다른 사람의 가입 상태를 승인/거절할 수 있어야 함
+drop policy if exists "profiles_update_status_by_admin" on profiles;
+create policy "profiles_update_status_by_admin" on profiles for update using (
+  exists (select 1 from profiles p where p.id = auth.uid() and p.role in ('staff','supervisor'))
+);
+
+-- ------------------------------------------------------------
+-- 2) labs: 실험실 목록
+-- ------------------------------------------------------------
+create table if not exists labs (
+  id text primary key,   -- '405B' / '311C'
+  name text not null
+);
+insert into labs (id, name) values
+  ('405B', '405B 실험실'),
+  ('311C', '311C 실험실')
+on conflict (id) do nothing;
+
+alter table labs enable row level security;
+drop policy if exists "labs_select_authenticated" on labs;
+create policy "labs_select_authenticated" on labs for select using (auth.role() = 'authenticated');
+
+-- ------------------------------------------------------------
+-- 3) lab_reservations: 실험실 예약 (1시간 단위 슬롯)
+-- ------------------------------------------------------------
+create extension if not exists btree_gist;
+
+create table if not exists lab_reservations (
+  id uuid primary key default gen_random_uuid(),
+  lab_id text references labs(id) not null,
+  reservation_date date not null,
+  start_hour int not null check (start_hour >= 0 and start_hour <= 23),
+  end_hour int not null check (end_hour > start_hour and end_hour <= 24),
+  user_id uuid references profiles(id) not null,
+  user_name text not null,
+  purpose text,
+  created_at timestamptz default now()
+);
+create index if not exists idx_resv_lab_date on lab_reservations (lab_id, reservation_date);
+
+-- 같은 실험실 + 같은 날짜 + 겹치는 시간대 예약을 DB 차원에서 원천 차단
+-- (한 슬롯 = 한 팀만 사용 가능하다는 규칙을 서버가 강제)
+alter table lab_reservations drop constraint if exists no_overlap;
+alter table lab_reservations add constraint no_overlap exclude using gist (
+  lab_id with =,
+  reservation_date with =,
+  int4range(start_hour, end_hour) with &&
+);
+
+alter table lab_reservations enable row level security;
+
+drop policy if exists "resv_select_authenticated" on lab_reservations;
+create policy "resv_select_authenticated" on lab_reservations for select using (auth.role() = 'authenticated');
+
+-- 예약 등록은 승인된(approved) 사용자가 본인 이름으로만 가능
+drop policy if exists "resv_insert_self_approved" on lab_reservations;
+create policy "resv_insert_self_approved" on lab_reservations for insert with check (
+  auth.uid() = user_id
+  and exists (select 1 from profiles where id = auth.uid() and status = 'approved')
+);
+
+-- 예약 취소(삭제)는 본인 또는 담당자/승인자만 가능
+drop policy if exists "resv_delete_self_or_admin" on lab_reservations;
+create policy "resv_delete_self_or_admin" on lab_reservations for delete using (
+  auth.uid() = user_id
+  or exists (select 1 from profiles where id = auth.uid() and role in ('staff','supervisor'))
+);
+
+grant usage on schema public to authenticated, anon;
+grant select on public.labs to authenticated;
+grant select, insert, delete on public.lab_reservations to authenticated;
+grant select, update on public.profiles to authenticated;
+-- ============================================================

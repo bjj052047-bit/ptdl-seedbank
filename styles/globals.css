@@ -114,3 +114,55 @@ nav.tabs a.active {
   background: var(--paper); color: var(--ink); border-color: var(--ink); border-bottom: 1px solid var(--paper);
   position: relative; top: 1px;
 }
+
+/* ============================================================
+   실험실 예약 페이지 전용 스타일
+   ============================================================ */
+
+.lab-tabs { display: flex; gap: 8px; margin-bottom: 18px; }
+.lab-tab {
+  font-family: 'Inter', sans-serif; font-size: 14px; font-weight: 700;
+  padding: 10px 22px; border-radius: 8px; border: 1.5px solid var(--line);
+  background: #fff; color: var(--ink); cursor: pointer;
+}
+.lab-tab.active { background: var(--green-deep); border-color: var(--green-deep); color: #fff; }
+
+.cal-header {
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;
+}
+.cal-grid {
+  display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px;
+}
+.cal-dow {
+  text-align: center; font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+  font-weight: 700; color: #736c58; padding: 6px 0;
+}
+.cal-cell {
+  background: #fff; border-radius: 6px; border: 1.5px solid var(--line);
+  min-height: 78px; padding: 6px 8px; cursor: pointer; text-align: left;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.cal-cell:hover { border-color: var(--green-mid); }
+.cal-cell.empty { background: transparent; border: none; cursor: default; }
+.cal-cell.today { border-color: var(--wheat); border-width: 2px; }
+.cal-cell.selected { border-color: var(--green-deep); border-width: 2px; background: rgba(63,93,58,0.06); }
+.cal-cell .cal-date { font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; font-weight: 700; }
+.cal-cell .cal-count {
+  font-size: 10.5px; font-weight: 700; color: var(--green-deep);
+  background: rgba(63,93,58,0.12); border-radius: 8px; padding: 1px 7px; align-self: flex-start;
+}
+.cal-cell .cal-chip {
+  font-size: 10px; color: #5c574a; font-family: 'IBM Plex Mono', monospace;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.hour-grid {
+  display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin: 10px 0 16px;
+}
+.hour-btn {
+  font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; font-weight: 600;
+  padding: 8px 4px; border-radius: 5px; border: 1.5px solid var(--line);
+  background: #fdfcf8; color: var(--ink); cursor: pointer; text-align: center;
+}
+.hour-btn.selected { background: var(--green-deep); border-color: var(--green-deep); color: #fff; }
+.hour-btn.booked { background: rgba(163,63,63,0.12); border-color: rgba(163,63,63,0.3); color: var(--danger); cursor: not-allowed; }

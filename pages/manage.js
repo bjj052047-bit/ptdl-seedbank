@@ -13,7 +13,7 @@ const emptyForm = {
 
 export default function ManagePage() {
   const router = useRouter();
-  const { session, profile, isStaff, loading } = useProfile();
+  const { session, profile, isStaff, isSupervisor, loading } = useProfile();
 
   const [allSeeds, setAllSeeds] = useState([]);
   const [form, setForm] = useState(emptyForm);
@@ -32,8 +32,10 @@ export default function ManagePage() {
   useEffect(() => {
     if (loading) return;
     if (!session) { router.replace('/login'); return; }
+    if (!profile) { router.replace('/welcome'); return; }
+    if (profile.status !== 'approved') { router.replace('/pending'); return; }
     if (!isStaff) { router.replace('/'); }
-  }, [session, isStaff, loading, router]);
+  }, [session, profile, isStaff, loading, router]);
 
   const loadSeeds = useCallback(async () => {
     const { data, error } = await supabase.from('seeds').select('*').order('created_at', { ascending: false }).limit(5000);
@@ -252,7 +254,7 @@ export default function ManagePage() {
 
   return (
     <div className="wrap">
-      <Nav profile={profile} isStaff={isStaff} />
+      <Nav profile={profile} isStaff={isStaff} isSupervisor={isSupervisor} />
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         <div className="card">

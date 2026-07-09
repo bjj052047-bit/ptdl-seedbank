@@ -6,7 +6,7 @@ import Nav from '../components/Nav';
 
 export default function IoPage() {
   const router = useRouter();
-  const { session, profile, isStaff, loading } = useProfile();
+  const { session, profile, isStaff, isSupervisor, loading } = useProfile();
 
   const [codeInput, setCodeInput] = useState('');
   const [foundSeed, setFoundSeed] = useState(null);
@@ -24,8 +24,10 @@ export default function IoPage() {
   useEffect(() => {
     if (loading) return;
     if (!session) { router.replace('/login'); return; }
+    if (!profile) { router.replace('/welcome'); return; }
+    if (profile.status !== 'approved') { router.replace('/pending'); return; }
     if (!isStaff) { router.replace('/'); }
-  }, [session, isStaff, loading, router]);
+  }, [session, profile, isStaff, loading, router]);
 
   useEffect(() => {
     setDate(new Date().toISOString().slice(0, 10));
@@ -114,7 +116,7 @@ export default function IoPage() {
 
   return (
     <div className="wrap">
-      <Nav profile={profile} isStaff={isStaff} />
+      <Nav profile={profile} isStaff={isStaff} isSupervisor={isSupervisor} />
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         <div className="card">

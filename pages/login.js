@@ -32,19 +32,20 @@ export default function LoginPage() {
       return;
     }
     // 세션이 바로 생기는 경우 (이메일 확인이 꺼져 있을 때) profiles 행을 만들어줌
+    // 새로 만드는 profiles 행은 항상 status='pending'(승인 대기)으로 시작합니다.
     if (data.session) {
       const { error: profileError } = await supabase
         .from('profiles')
-        .insert({ id: data.user.id, name: name.trim(), role: 'researcher' });
+        .insert({ id: data.user.id, name: name.trim(), email: email.trim(), role: 'researcher' });
       if (profileError) {
         setMsg({ type: 'err', text: `프로필 생성 실패: ${profileError.message}` });
         setBusy(false);
         return;
       }
-      router.push('/');
+      router.push('/pending');
       return;
     }
-    setMsg({ type: 'ok', text: '가입 신청이 완료되었습니다. 이메일 확인이 켜져 있다면 메일함을 확인한 뒤 로그인해주세요.' });
+    setMsg({ type: 'ok', text: '가입 신청이 완료되었습니다. 이메일 확인이 켜져 있다면 메일함을 확인한 뒤 로그인해주세요. 로그인 후에는 관리자 승인을 기다려야 이용할 수 있습니다.' });
     setBusy(false);
   }
 
@@ -115,7 +116,8 @@ export default function LoginPage() {
         {msg && <div className={`msg ${msg.type}`} style={{ marginTop: 12 }}>{msg.text}</div>}
 
         <p style={{ fontSize: 11.5, color: '#847d68', marginTop: 16, lineHeight: 1.5 }}>
-          가입 후에는 기본적으로 &apos;연구원&apos; 권한으로 시작합니다. 담당자 권한이 필요하면
+          가입 신청 후에는 관리자(담당자/승인자)의 승인이 있어야 사이트를 이용할 수 있습니다.
+          승인 전까지는 &apos;승인 대기중&apos; 화면이 표시됩니다. 담당자 권한이 필요하면
           연구실 관리자(Supabase 프로젝트 소유자)에게 요청해 role을 변경해달라고 하세요.
         </p>
       </div>

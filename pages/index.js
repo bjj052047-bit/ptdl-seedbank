@@ -13,7 +13,7 @@ function cropTagClass(crop) {
 
 export default function SearchPage() {
   const router = useRouter();
-  const { session, profile, isStaff, loading } = useProfile();
+  const { session, profile, isStaff, isSupervisor, loading } = useProfile();
 
   const [query, setQuery] = useState('');
   const [sortOrder, setSortOrder] = useState('desc'); // 수확연도 내림차순(desc)/오름차순(asc)
@@ -25,7 +25,8 @@ export default function SearchPage() {
   useEffect(() => {
     if (loading) return;
     if (!session) { router.replace('/login'); return; }
-    if (!profile) { router.replace('/welcome'); }
+    if (!profile) { router.replace('/welcome'); return; }
+    if (profile.status !== 'approved') { router.replace('/pending'); }
   }, [session, profile, loading, router]);
 
   const runSearch = useCallback(async (q, order) => {
@@ -74,13 +75,13 @@ export default function SearchPage() {
     setDetailLoading(false);
   }
 
-  if (loading || !session || !profile) {
+  if (loading || !session || !profile || profile.status !== 'approved') {
     return <div className="wrap"><p>불러오는 중...</p></div>;
   }
 
   return (
     <div className="wrap">
-      <Nav profile={profile} isStaff={isStaff} />
+      <Nav profile={profile} isStaff={isStaff} isSupervisor={isSupervisor} />
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
         <input
