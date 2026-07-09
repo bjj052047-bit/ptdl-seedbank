@@ -36,6 +36,7 @@ export default function ReservationsPage() {
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth()); // 0-indexed
   const [reservations, setReservations] = useState([]); // 이번 달 전체 예약
+  const [myReservations, setMyReservations] = useState([]); // 나의 전체 예약 (두 실험실 모두)
   const [selectedDate, setSelectedDate] = useState(null); // 'YYYY-MM-DD'
   const [selectedHours, setSelectedHours] = useState([]);
   const [purpose, setPurpose] = useState('');
@@ -68,6 +69,21 @@ export default function ReservationsPage() {
   useEffect(() => {
     if (session) loadReservations(selectedLab, viewYear, viewMonth);
   }, [session, selectedLab, viewYear, viewMonth, loadReservations]);
+
+  const loadMyReservations = useCallback(async () => {
+    if (!profile) return;
+    const { data, error } = await supabase
+      .from('lab_reservations')
+      .select('*')
+      .eq('user_id', profile.id)
+      .order('reservation_date', { ascending: false })
+      .order('start_hour', { ascending: true });
+    if (!error) setMyReservations(data || []);
+  }, [profile]);
+
+  useEffect(() => {
+    if (session && profile) loadMyReservations();
+  }, [session, profile, loadMyReservations]);
 
   const reservationsByDate = useMemo(() => {
     const map = {};
@@ -152,6 +168,7 @@ export default function ReservationsPage() {
     setSelectedHours([]);
     setPurpose('');
     await loadReservations(selectedLab, viewYear, viewMonth);
+    await loadMyReservations();
     setBusy(false);
   }
 
@@ -161,6 +178,7 @@ export default function ReservationsPage() {
     const { error } = await supabase.from('lab_reservations').delete().eq('id', r.id);
     if (error) alert(`취소 실패: ${error.message}`);
     await loadReservations(selectedLab, viewYear, viewMonth);
+    await loadMyReservations();
     setActingId(null);
   }
 
@@ -283,6 +301,30 @@ export default function ReservationsPage() {
           </div>
         </div>
       )}
+
+      <div className="card">
+        <h4 className="serif" style={{ marginTop: 0 }}>나의 예약 내역 ({myReservations.length})</h4>
+        {myReservations.length === 0 ? (
+          <p style={{ color: '#847d68', fontSize: 13 }}>아직 예약한 내역이 없습니다.</p>
+        ) : (
+          <table>
+            <thead><tr><th>실험실</th><th>날짜</th><th>시간</th><th>용도</th><th></th></tr></thead>
+            <tbody>
+              {myReservations.map((r) => (
+                <tr key={r.id}>
+                  <td>{LABS.find((l) => l.id === r.lab_id)?.name || r.lab_id}</td>
+                  <td className="mono">{r.reservation_date}</td>
+                  <td className="mono">{pad2(r.start_hour)}:00~{pad2(r.end_hour === 24 ? 0 : r.end_hour)}:00</td>
+                  <td>{r.purpose || '-'}</td>
+                  <td>
+                    <button className="btn btn-danger" style={{ padding: '3px 9px', fontSize: 11.5 }} disabled={actingId === r.id} onClick={() => handleCancel(r)}>취소</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   );
 }

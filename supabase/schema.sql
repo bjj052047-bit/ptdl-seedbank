@@ -261,3 +261,84 @@ grant select on public.labs to authenticated;
 grant select, insert, delete on public.lab_reservations to authenticated;
 grant select, update on public.profiles to authenticated;
 -- ============================================================
+
+-- ============================================================
+-- 마이그레이션: 배드(재배 공간) 예약 시스템
+-- 이미 위쪽 schema.sql을 한 번 실행한 적이 있다면,
+-- Supabase SQL Editor에 이 블록부터 끝까지만 새로 붙여넣고 실행하면 됩니다.
+--
+-- 실험실 예약과 다른 점: 배드는 "기간"(시작일~종료일) 단위로 예약하고,
+-- 한 배드가 넓어서 여러 팀이 나눠 쓰는 경우가 있어 겹치는 예약을 DB가
+-- 막지 않습니다 (화면에서 겹침을 미리 알려주고 사용자가 확인 후 진행).
+-- ============================================================
+
+-- ------------------------------------------------------------
+-- 1) beds: 배드(재배 공간) 목록 - 시설별로 그룹핑
+-- ------------------------------------------------------------
+create table if not exists beds (
+  id text primary key,          -- 'GR01' 등 배드 코드
+  facility text not null,        -- 'Growth Room 415' 등 시설명 (화면에서 그룹핑용)
+  facility_order int not null default 0,  -- 시설 그룹이 화면에 나열되는 순서
+  sort_order int not null default 0        -- 같은 시설 안에서 배드가 나열되는 순서
+);
+
+insert into beds (id, facility, facility_order, sort_order) values
+  ('GR01','Growth Room 415',1,1),('GR02','Growth Room 415',1,2),('GR03','Growth Room 415',1,3),
+  ('GR04','Growth Room 415',1,4),('GR05','Growth Room 415',1,5),('GR06','Growth Room 415',1,6),
+  ('GR07','Growth Room 415',1,7),('GR08','Growth Room 415',1,8),('GR09','Growth Room 415',1,9),
+  ('GR10','Growth Room 415',1,10),('GR11','Growth Room 415',1,11),('GR12','Growth Room 415',1,12),
+  ('GR13','Growth Room 415',1,13),
+  ('IC01','Incubator 415',2,1),('IC02','Incubator 415',2,2),('IC03','Incubator 415',2,3),('IC04','Incubator 415',2,4),
+  ('GC01','Growth Chamber 415',3,1),('GC02','Growth Chamber 415',3,2),
+  ('TFG01','Training Farm Greenhouse',4,1),('TFG02','Training Farm Greenhouse',4,2),('TFG03','Training Farm Greenhouse',4,3),
+  ('TFO01','Training Farm Outdoor',5,1),('TFO02','Training Farm Outdoor',5,2),('TFO03','Training Farm Outdoor',5,3),
+  ('TFO04','Training Farm Outdoor',5,4),('TFO05','Training Farm Outdoor',5,5),('TFO06','Training Farm Outdoor',5,6),
+  ('TFO07','Training Farm Outdoor',5,7),('TFO08','Training Farm Outdoor',5,8),('TFO09','Training Farm Outdoor',5,9),
+  ('RGA01','Rapid Generation Advancement Room',6,1),('RGA02','Rapid Generation Advancement Room',6,2),('RGA03','Rapid Generation Advancement Room',6,3),
+  ('DR01','Dark Room',7,1),('DR02','Dark Room',7,2),('DR03','Dark Room',7,3),('DR04','Dark Room',7,4),
+  ('HGR01','Hydroponics Growth Room 454',8,1),('HGR02','Hydroponics Growth Room 454',8,2),
+  ('HGR03','Hydroponics Growth Room 454',8,3),('HGR04','Hydroponics Growth Room 454',8,4)
+on conflict (id) do nothing;
+
+alter table beds enable row level security;
+drop policy if exists "beds_select_authenticated" on beds;
+create policy "beds_select_authenticated" on beds for select using (auth.role() = 'authenticated');
+
+-- ------------------------------------------------------------
+-- 2) bed_reservations: 배드 예약 (기간 단위, 겹침 허용)
+-- ------------------------------------------------------------
+create table if not exists bed_reservations (
+  id uuid primary key default gen_random_uuid(),
+  bed_id text references beds(id) not null,
+  start_date date not null,
+  end_date date not null check (end_date >= start_date),
+  user_id uuid references profiles(id) not null,
+  user_name text not null,
+  purpose text,
+  created_at timestamptz default now()
+);
+create index if not exists idx_bed_resv_bed on bed_reservations (bed_id, start_date, end_date);
+
+alter table bed_reservations enable row level security;
+
+drop policy if exists "bed_resv_select_authenticated" on bed_reservations;
+create policy "bed_resv_select_authenticated" on bed_reservations for select using (auth.role() = 'authenticated');
+
+-- 예약 등록은 승인된(approved) 사용자가 본인 이름으로만 가능 (겹침은 허용 - DB가 막지 않음)
+drop policy if exists "bed_resv_insert_self_approved" on bed_reservations;
+create policy "bed_resv_insert_self_approved" on bed_reservations for insert with check (
+  auth.uid() = user_id
+  and exists (select 1 from profiles where id = auth.uid() and status = 'approved')
+);
+
+-- 예약 취소(삭제)는 본인 또는 담당자/승인자만 가능
+drop policy if exists "bed_resv_delete_self_or_admin" on bed_reservations;
+create policy "bed_resv_delete_self_or_admin" on bed_reservations for delete using (
+  auth.uid() = user_id
+  or exists (select 1 from profiles where id = auth.uid() and role in ('staff','supervisor'))
+);
+
+grant usage on schema public to authenticated, anon;
+grant select on public.beds to authenticated;
+grant select, insert, delete on public.bed_reservations to authenticated;
+-- ============================================================

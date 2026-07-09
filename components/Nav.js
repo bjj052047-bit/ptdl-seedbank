@@ -12,6 +12,7 @@ export default function Nav({ profile, isStaff, isSupervisor }) {
     { href: '/', label: '종자 검색', staffOnly: false, adminOnly: false },
     { href: '/requests', label: '종자 요청', staffOnly: false, adminOnly: false },
     { href: '/reservations', label: '실험실 예약', staffOnly: false, adminOnly: false },
+    { href: '/beds', label: '배드 예약', staffOnly: false, adminOnly: false },
     { href: '/io', label: '입출고 기록', staffOnly: true, adminOnly: false },
     { href: '/manage', label: '데이터 등록·관리', staffOnly: true, adminOnly: false },
     { href: '/approvals', label: '가입 승인', staffOnly: false, adminOnly: true },
@@ -33,7 +34,7 @@ export default function Nav({ profile, isStaff, isSupervisor }) {
             </small>
           </div>
           <div className="mono" style={{ fontSize: 12.5, color: '#5c574a' }}>
-            세종대학교 스마트생명산업융합학과 · 종자실 재고 관리 · 실험실 예약
+            세종대학교 스마트생명산업융합학과 · 종자실 재고 관리 · 실험실/배드 예약
           </div>
         </div>
         {profile && (
