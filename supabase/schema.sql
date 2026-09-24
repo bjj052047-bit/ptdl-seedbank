@@ -387,3 +387,94 @@ grant usage on schema public to authenticated, anon;
 grant select, insert, update, delete on public.bed_reservations to authenticated;
 grant select, insert, update, delete on public.lab_reservations to authenticated;
 -- ============================================================
+
+-- ============================================================
+-- 마이그레이션: 실험실 예약 - 실험 목적 + 사용 기기(장비) 예약
+-- 이미 위쪽 schema.sql을 한 번 실행한 적이 있다면,
+-- Supabase SQL Editor에 이 블록부터 끝까지만 새로 붙여넣고 실행하면 됩니다.
+--
+-- 배경: 실제로는 한 실험실을 여러 팀이 동시에 쓸 수 있는데(공간은 넓으니까),
+-- 문제는 "같은 기기"를 동시에 쓰려고 할 때였습니다. 그래서:
+--  1) 실험실 예약은 이제 시간이 겹쳐도 등록할 수 있게 풀어주고 (같은 공간을 여러 팀이 사용)
+--  2) 대신 "기기"를 시간+기기 단위로 따로 예약해서, 같은 기기·겹치는 시간은 DB가 막습니다.
+-- ============================================================
+
+-- 1) 기존의 "같은 실험실+시간대는 한 팀만" 제약을 제거 (이제 여러 팀 동시 사용 허용)
+alter table lab_reservations drop constraint if exists no_overlap;
+
+-- 실험 목적 컬럼 추가 (DNA extraction / RNA extraction / ... / 직접 입력한 기타 텍스트)
+alter table lab_reservations add column if not exists experiment_purpose text;
+
+-- ------------------------------------------------------------
+-- 2) lab_devices: 실험실별 사용 가능 기기 목록
+-- ------------------------------------------------------------
+create table if not exists lab_devices (
+  id text primary key,
+  lab_id text references labs(id) not null,
+  name text not null,
+  sort_order int not null default 0
+);
+
+insert into lab_devices (id, lab_id, name, sort_order) values
+  ('311C-CENTRIFUGE-BIG','311C','Large Centrifuge',1),
+  ('311C-CENTRIFUGE-SMALL','311C','Small Centrifuge',2),
+  ('311C-FUME-HOOD','311C','Fume Hood',3),
+  ('311C-WATERBATH-SMALL','311C','Small Water Bath',4),
+  ('311C-AUTOCLAVE','311C','Autoclave',5),
+  ('311C-VAZYME','311C','Vazyme Extraction Machine',6),
+  ('405B-GEL-1','405B','Green Electrophoresis Apparatus 1',1),
+  ('405B-GEL-2','405B','Green Electrophoresis Apparatus 2',2),
+  ('405B-PAGE','405B','PAGE Electrophoresis Apparatus',3),
+  ('405B-MINI-RNA','405B','Mini Electrophoresis Apparatus for RNA',4),
+  ('405B-MINI-DNA','405B','Mini Electrophoresis Apparatus for DNA',5),
+  ('405B-PCR-1','405B','PCR Machine 1',6),
+  ('405B-PCR-2','405B','PCR Machine 2',7),
+  ('405B-QPCR','405B','qPCR Machine',8)
+on conflict (id) do nothing;
+
+alter table lab_devices enable row level security;
+drop policy if exists "lab_devices_select_authenticated" on lab_devices;
+create policy "lab_devices_select_authenticated" on lab_devices for select using (auth.role() = 'authenticated');
+
+-- ------------------------------------------------------------
+-- 3) lab_reservation_devices: 예약 1건에 기기 여러 개를 연결 (다대다)
+--    같은 기기가 겹치는 시간에 중복 연결되는 것을 DB가 원천 차단
+-- ------------------------------------------------------------
+create table if not exists lab_reservation_devices (
+  id uuid primary key default gen_random_uuid(),
+  reservation_id uuid references lab_reservations(id) on delete cascade not null,
+  device_id text references lab_devices(id) not null,
+  reservation_date date not null,
+  start_hour int not null,
+  end_hour int not null
+);
+create index if not exists idx_resv_dev_reservation on lab_reservation_devices (reservation_id);
+
+alter table lab_reservation_devices drop constraint if exists device_no_overlap;
+alter table lab_reservation_devices add constraint device_no_overlap exclude using gist (
+  device_id with =,
+  reservation_date with =,
+  int4range(start_hour, end_hour) with &&
+);
+
+alter table lab_reservation_devices enable row level security;
+
+drop policy if exists "resv_dev_select_authenticated" on lab_reservation_devices;
+create policy "resv_dev_select_authenticated" on lab_reservation_devices for select using (auth.role() = 'authenticated');
+
+drop policy if exists "resv_dev_insert_owner" on lab_reservation_devices;
+create policy "resv_dev_insert_owner" on lab_reservation_devices for insert with check (
+  exists (select 1 from lab_reservations r where r.id = reservation_id and r.user_id = auth.uid())
+  or exists (select 1 from profiles where id = auth.uid() and role in ('staff','supervisor'))
+);
+
+drop policy if exists "resv_dev_delete_owner" on lab_reservation_devices;
+create policy "resv_dev_delete_owner" on lab_reservation_devices for delete using (
+  exists (select 1 from lab_reservations r where r.id = reservation_id and r.user_id = auth.uid())
+  or exists (select 1 from profiles where id = auth.uid() and role in ('staff','supervisor'))
+);
+
+grant usage on schema public to authenticated, anon;
+grant select on public.lab_devices to authenticated;
+grant select, insert, delete on public.lab_reservation_devices to authenticated;
+-- ============================================================
