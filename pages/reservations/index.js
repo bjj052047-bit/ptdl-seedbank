@@ -49,7 +49,7 @@ function buildMonthGrid(year, month) {
 
 export default function ReservationsPage() {
   const router = useRouter();
-  const { session, profile, isStaff, isSupervisor, loading } = useProfile();
+  const { session, profile, isStaff, isSupervisor, isDeveloper, loading } = useProfile();
 
   const today = useMemo(() => new Date(), []);
   const [selectedLab, setSelectedLab] = useState('405B');
@@ -361,7 +361,7 @@ export default function ReservationsPage() {
 
   return (
     <div className="wrap">
-      <Nav profile={profile} isStaff={isStaff} isSupervisor={isSupervisor} />
+      <Nav profile={profile} isStaff={isStaff} isSupervisor={isSupervisor} isDeveloper={isDeveloper} />
 
       <div className="lab-tabs">
         {LABS.map((lab) => (
@@ -427,7 +427,7 @@ export default function ReservationsPage() {
                       <td>{displayPurpose(r)}</td>
                       <td style={{ fontSize: 12.5 }}>{deviceNamesOf(r)}</td>
                       <td>
-                        {(r.user_id === profile.id || isStaff || isSupervisor) && (
+                        {(r.user_id === profile.id || isStaff || isSupervisor || isDeveloper) && (
                           <button className="btn btn-danger" style={{ padding: '3px 9px', fontSize: 11.5 }} disabled={actingId === r.id} onClick={() => handleCancel(r)}>취소</button>
                         )}
                       </td>

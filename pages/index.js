@@ -13,7 +13,7 @@ function cropTagClass(crop) {
 
 export default function SearchPage() {
   const router = useRouter();
-  const { session, profile, isStaff, isDeveloper, loading } = useProfile();
+  const { session, profile, isStaff, isSupervisor, isDeveloper, loading } = useProfile();
 
   const [query, setQuery] = useState('');
   const [sortOrder, setSortOrder] = useState('desc'); // 수확연도 내림차순(desc)/오름차순(asc)
@@ -80,7 +80,7 @@ export default function SearchPage() {
 
   return (
     <div className="wrap">
-      <Nav profile={profile} isStaff={isStaff} isDeveloper={isDeveloper} />
+      <Nav profile={profile} isStaff={isStaff} isSupervisor={isSupervisor} isDeveloper={isDeveloper} />
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
         <input

@@ -39,8 +39,8 @@ function buildMonthGrid(year, month) {
 
 export default function BedsPage() {
   const router = useRouter();
-  const { session, profile, isStaff, isSupervisor, loading } = useProfile();
-  const isAdmin = isStaff || isSupervisor;
+  const { session, profile, isStaff, isSupervisor, isDeveloper, loading } = useProfile();
+  const isAdmin = isStaff || isSupervisor || isDeveloper;
 
   const today = useMemo(() => new Date(), []);
   const [beds, setBeds] = useState([]);
@@ -330,7 +330,7 @@ export default function BedsPage() {
 
   return (
     <div className="wrap">
-      <Nav profile={profile} isStaff={isStaff} isSupervisor={isSupervisor} />
+      <Nav profile={profile} isStaff={isStaff} isSupervisor={isSupervisor} isDeveloper={isDeveloper} />
 
       <div className="card">
         <h4 className="serif" style={{ marginTop: 0 }}>배드 예약하기</h4>

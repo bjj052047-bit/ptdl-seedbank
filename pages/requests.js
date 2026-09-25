@@ -245,7 +245,7 @@ export default function RequestsPage() {
 
   return (
     <div className="wrap">
-      <Nav profile={profile} isStaff={isStaff} isDeveloper={isDeveloper} />
+      <Nav profile={profile} isStaff={isStaff} isSupervisor={isSupervisor} isDeveloper={isDeveloper} />
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         <div className="card">

@@ -13,7 +13,7 @@ const emptyForm = {
 
 export default function ManagePage() {
   const router = useRouter();
-  const { session, profile, isStaff, isDeveloper, loading } = useProfile();
+  const { session, profile, isStaff, isSupervisor, isDeveloper, loading } = useProfile();
 
   const [allSeeds, setAllSeeds] = useState([]);
   const [form, setForm] = useState(emptyForm);
@@ -252,7 +252,7 @@ export default function ManagePage() {
 
   return (
     <div className="wrap">
-      <Nav profile={profile} isStaff={isStaff} isDeveloper={isDeveloper} />
+      <Nav profile={profile} isStaff={isStaff} isSupervisor={isSupervisor} isDeveloper={isDeveloper} />
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         <div className="card">

@@ -6,7 +6,7 @@ import Nav from '../components/Nav';
 
 export default function IoPage() {
   const router = useRouter();
-  const { session, profile, isStaff, isDeveloper, loading } = useProfile();
+  const { session, profile, isStaff, isSupervisor, isDeveloper, loading } = useProfile();
 
   const [codeInput, setCodeInput] = useState('');
   const [foundSeed, setFoundSeed] = useState(null);
@@ -114,7 +114,7 @@ export default function IoPage() {
 
   return (
     <div className="wrap">
-      <Nav profile={profile} isStaff={isStaff} isDeveloper={isDeveloper} />
+      <Nav profile={profile} isStaff={isStaff} isSupervisor={isSupervisor} isDeveloper={isDeveloper} />
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         <div className="card">

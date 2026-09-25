@@ -478,3 +478,70 @@ grant usage on schema public to authenticated, anon;
 grant select on public.lab_devices to authenticated;
 grant select, insert, delete on public.lab_reservation_devices to authenticated;
 -- ============================================================
+-- ============================================================
+-- 마이그레이션: 개발자(developer) 역할을 모든 기능에 통합
+-- (종자 관리 쪽 정책 일부는 이미 별도로 적용되어 있을 수 있으나, 아래는 몇 번을 실행해도 안전합니다)
+-- ============================================================
+alter table profiles drop constraint if exists profiles_role_check;
+alter table profiles add constraint profiles_role_check check (role in ('staff','researcher','supervisor','developer'));
+
+drop policy if exists "profiles_update_status_by_admin" on profiles;
+create policy "profiles_update_status_by_admin" on profiles for update using (
+  exists (select 1 from profiles p where p.id = auth.uid() and p.role in ('staff','supervisor','developer'))
+);
+
+drop policy if exists "seeds_insert_staff" on seeds;
+create policy "seeds_insert_staff" on seeds for insert with check (
+  exists (select 1 from profiles where id = auth.uid() and role in ('staff','developer'))
+);
+drop policy if exists "seeds_update_staff" on seeds;
+create policy "seeds_update_staff" on seeds for update using (
+  exists (select 1 from profiles where id = auth.uid() and role in ('staff','developer'))
+);
+drop policy if exists "seeds_delete_staff" on seeds;
+create policy "seeds_delete_staff" on seeds for delete using (
+  exists (select 1 from profiles where id = auth.uid() and role in ('staff','developer'))
+);
+
+drop policy if exists "tx_insert_staff" on seed_transactions;
+create policy "tx_insert_staff" on seed_transactions for insert with check (
+  exists (select 1 from profiles where id = auth.uid() and role in ('staff','developer'))
+);
+
+drop policy if exists "req_update_staff_or_supervisor" on seed_requests;
+create policy "req_update_staff_or_supervisor" on seed_requests for update using (
+  exists (select 1 from profiles where id = auth.uid() and role in ('staff','supervisor','developer'))
+);
+
+drop policy if exists "resv_delete_self_or_admin" on lab_reservations;
+create policy "resv_delete_self_or_admin" on lab_reservations for delete using (
+  user_id = auth.uid()
+  or exists (select 1 from profiles where id = auth.uid() and role in ('staff','supervisor','developer'))
+);
+drop policy if exists "resv_update_self_or_admin" on lab_reservations;
+create policy "resv_update_self_or_admin" on lab_reservations for update using (
+  user_id = auth.uid()
+  or exists (select 1 from profiles where id = auth.uid() and role in ('staff','supervisor','developer'))
+);
+
+drop policy if exists "bed_resv_delete_self_or_admin" on bed_reservations;
+create policy "bed_resv_delete_self_or_admin" on bed_reservations for delete using (
+  user_id = auth.uid()
+  or exists (select 1 from profiles where id = auth.uid() and role in ('staff','supervisor','developer'))
+);
+drop policy if exists "bed_resv_update_self_or_admin" on bed_reservations;
+create policy "bed_resv_update_self_or_admin" on bed_reservations for update using (
+  user_id = auth.uid()
+  or exists (select 1 from profiles where id = auth.uid() and role in ('staff','supervisor','developer'))
+);
+
+drop policy if exists "resv_dev_insert_owner" on lab_reservation_devices;
+create policy "resv_dev_insert_owner" on lab_reservation_devices for insert with check (
+  exists (select 1 from lab_reservations r where r.id = reservation_id and r.user_id = auth.uid())
+  or exists (select 1 from profiles where id = auth.uid() and role in ('staff','supervisor','developer'))
+);
+drop policy if exists "resv_dev_delete_owner" on lab_reservation_devices;
+create policy "resv_dev_delete_owner" on lab_reservation_devices for delete using (
+  exists (select 1 from lab_reservations r where r.id = reservation_id and r.user_id = auth.uid())
+  or exists (select 1 from profiles where id = auth.uid() and role in ('staff','supervisor','developer'))
+);

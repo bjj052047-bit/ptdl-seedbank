@@ -8,8 +8,8 @@ const ROLE_LABEL = { staff: '담당자', supervisor: '승인자', researcher: '�
 
 export default function ApprovalsPage() {
   const router = useRouter();
-  const { session, profile, isStaff, isSupervisor, loading } = useProfile();
-  const isAdmin = isStaff || isSupervisor;
+  const { session, profile, isStaff, isSupervisor, isDeveloper, loading } = useProfile();
+  const isAdmin = isStaff || isSupervisor || isDeveloper;
 
   const [profiles, setProfiles] = useState([]);
   const [actingId, setActingId] = useState(null);
@@ -54,7 +54,7 @@ export default function ApprovalsPage() {
 
   return (
     <div className="wrap">
-      <Nav profile={profile} isStaff={isStaff} isSupervisor={isSupervisor} />
+      <Nav profile={profile} isStaff={isStaff} isSupervisor={isSupervisor} isDeveloper={isDeveloper} />
 
       <div className="card">
         <h4 className="serif" style={{ marginTop: 0 }}>가입 승인 대기 ({pending.length})</h4>
