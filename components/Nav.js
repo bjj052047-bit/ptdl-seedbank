@@ -17,6 +17,7 @@ export default function Nav({ profile, isStaff, isSupervisor, isDeveloper }) {
     { href: '/io', label: '입출고 기록', staffOnly: true, adminOnly: false },
     { href: '/manage', label: '데이터 등록·관리', staffOnly: true, adminOnly: false },
     { href: '/approvals', label: '가입 승인', staffOnly: false, adminOnly: true },
+    { href: '/audit', label: '수정 이력', staffOnly: false, adminOnly: false, devOnly: true },
   ];
 
   async function handleLogout() {
@@ -53,6 +54,7 @@ export default function Nav({ profile, isStaff, isSupervisor, isDeveloper }) {
         {tabs
           .filter((t) => !t.staffOnly || canManageInventory)
           .filter((t) => !t.adminOnly || canApprove)
+          .filter((t) => !t.devOnly || isDeveloper)
           .map((t) => (
             <Link key={t.href} href={t.href} className={router.pathname === t.href ? 'active' : ''}>
               {t.label}
