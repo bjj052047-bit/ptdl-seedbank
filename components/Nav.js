@@ -1,23 +1,24 @@
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { supabase } from '../lib/supabaseClient';
+import { useLang, DICT } from '../lib/i18n';
 
-const ROLE_LABEL = { staff: '종자실 담당자', supervisor: '승인자', researcher: '연구원', developer: '개발자' };
 
 export default function Nav({ profile, isStaff, isSupervisor, isDeveloper }) {
   const router = useRouter();
+  const { t, toggleLang } = useLang();
   const canApprove = isSupervisor || isDeveloper; // 가입 승인 권한
   const canManageInventory = isStaff || isSupervisor || isDeveloper; // 입출고·데이터관리 권한
 
   const tabs = [
-    { href: '/', label: '종자 검색', staffOnly: false, adminOnly: false },
-    { href: '/requests', label: '종자 요청', staffOnly: false, adminOnly: false },
-    { href: '/reservations', label: '실험실 예약', staffOnly: false, adminOnly: false },
-    { href: '/beds', label: '배드 예약', staffOnly: false, adminOnly: false },
-    { href: '/io', label: '입출고 기록', staffOnly: true, adminOnly: false },
-    { href: '/manage', label: '데이터 등록·관리', staffOnly: true, adminOnly: false },
-    { href: '/approvals', label: '가입 승인', staffOnly: false, adminOnly: true },
-    { href: '/audit', label: '수정 이력', staffOnly: false, adminOnly: false, devOnly: true },
+    { href: '/', label: t('nav.tab.search'), staffOnly: false, adminOnly: false },
+    { href: '/requests', label: t('nav.tab.requests'), staffOnly: false, adminOnly: false },
+    { href: '/reservations', label: t('nav.tab.reservations'), staffOnly: false, adminOnly: false },
+    { href: '/beds', label: t('nav.tab.beds'), staffOnly: false, adminOnly: false },
+    { href: '/io', label: t('nav.tab.io'), staffOnly: true, adminOnly: false },
+    { href: '/manage', label: t('nav.tab.manage'), staffOnly: true, adminOnly: false },
+    { href: '/approvals', label: t('nav.tab.approvals'), staffOnly: false, adminOnly: true },
+    { href: '/audit', label: t('nav.tab.audit'), staffOnly: false, adminOnly: false, devOnly: true },
   ];
 
   async function handleLogout() {
@@ -30,25 +31,36 @@ export default function Nav({ profile, isStaff, isSupervisor, isDeveloper }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
         <div>
           <div className="serif" style={{ fontWeight: 700, fontSize: 26, display: 'flex', alignItems: 'baseline', gap: 10 }}>
-            PTDL 연구실 포털
+            {t('nav.title')}
             <small className="mono" style={{ fontSize: 12, fontWeight: 500, color: 'var(--green-deep)', background: 'rgba(63,93,58,0.1)', padding: '3px 8px', borderRadius: 3 }}>
               PTDL
             </small>
           </div>
           <div className="mono" style={{ fontSize: 12.5, color: '#5c574a' }}>
-            세종대학교 스마트생명산업융합학과 · 종자실 재고 관리 · 실험실/배드 예약
+            {t('nav.subtitle')}
           </div>
         </div>
-        {profile && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span className={profile.role === 'researcher' ? 'role-badge' : 'staff-badge'}>
-              {ROLE_LABEL[profile.role] || profile.role} · {profile.name}
-            </span>
-            <button className="btn btn-ghost" style={{ padding: '6px 12px', fontSize: 12 }} onClick={handleLogout}>
-              로그아웃
-            </button>
-          </div>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* 한글 / English 전환 버튼 (로그인 여부와 무관하게 항상 표시) */}
+          <button
+            className="btn btn-ghost mono"
+            style={{ padding: '6px 12px', fontSize: 12 }}
+            onClick={toggleLang}
+            title="한글 / English"
+          >
+            🌐 {t('nav.langToggle')}
+          </button>
+          {profile && (
+            <>
+              <span className={profile.role === 'researcher' ? 'role-badge' : 'staff-badge'}>
+                {DICT[`role.${profile.role}`] ? t(`role.${profile.role}`) : profile.role} · {profile.name}
+              </span>
+              <button className="btn btn-ghost" style={{ padding: '6px 12px', fontSize: 12 }} onClick={handleLogout}>
+                {t('nav.logout')}
+              </button>
+            </>
+          )}
+        </div>
       </div>
       <nav className="tabs">
         {tabs

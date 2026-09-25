@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import { supabase } from '../lib/supabaseClient';
 import { useProfile } from '../lib/useProfile';
 import Nav from '../components/Nav';
+import { useLang, DICT } from '../lib/i18n';
 
 function cropTagClass(crop) {
   if (!crop) return 'crop-other';
@@ -13,6 +14,7 @@ function cropTagClass(crop) {
 
 export default function SearchPage() {
   const router = useRouter();
+  const { t, lang } = useLang();
   const { session, profile, isStaff, isSupervisor, isDeveloper, loading } = useProfile();
 
   const [query, setQuery] = useState('');
@@ -41,8 +43,8 @@ export default function SearchPage() {
 
   useEffect(() => {
     if (!session) return;
-    const t = setTimeout(() => runSearch(query, sortOrder), 250); // 입력 디바운스
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => runSearch(query, sortOrder), 250); // 입력 디바운스
+    return () => clearTimeout(timer);
   }, [query, sortOrder, session, runSearch]);
 
   async function openDetail(seed) {
@@ -75,7 +77,7 @@ export default function SearchPage() {
   }
 
   if (loading || !session || !profile) {
-    return <div className="wrap"><p>불러오는 중...</p></div>;
+    return <div className="wrap"><p>{t('common.loading')}</p></div>;
   }
 
   return (
@@ -85,29 +87,29 @@ export default function SearchPage() {
       <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
         <input
           type="text"
-          placeholder="종자 코드 또는 품종명으로 검색 (예: RIC-2023-014, 밀크씨슬)"
+          placeholder={t('search.placeholder')}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
         <select value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} style={{ maxWidth: 220 }}>
-          <option value="desc">수확연도 내림차순 (최신순)</option>
-          <option value="asc">수확연도 오름차순 (오래된순)</option>
+          <option value="desc">{t('search.sort.desc')}</option>
+          <option value="asc">{t('search.sort.asc')}</option>
         </select>
       </div>
 
       <div className="mono" style={{ fontSize: 12.5, color: '#5c574a', marginBottom: 10 }}>
-        {searching ? '검색 중...' : `검색 결과: ${results.length}건`}
+        {searching ? t('search.searching') : t('search.resultCount', { n: results.length })}
       </div>
 
       {results.length === 0 && !searching ? (
         <div className="card" style={{ textAlign: 'center', padding: 50, color: '#847d68' }}>
-          검색 결과가 없습니다. 다른 코드나 품종명으로 검색해보세요.
+          {t('search.noResult')}
         </div>
       ) : (
         <table>
           <thead>
             <tr>
-              <th>종자코드</th><th>작물</th><th>품종명</th><th>수확연도</th><th>보관위치</th><th>재고(g)</th>
+              <th>{t('field.code')}</th><th>{t('field.crop')}</th><th>{t('field.variety')}</th><th>{t('field.harvestYear')}</th><th>{t('field.location')}</th><th>{t('field.qtyG')}</th>
             </tr>
           </thead>
           <tbody>
@@ -145,32 +147,32 @@ export default function SearchPage() {
             </div>
 
             <dl style={{ display: 'grid', gridTemplateColumns: '100px 1fr', rowGap: 8, fontSize: 13.5 }}>
-              <dt className="mono" style={{ color: '#736c58', fontSize: 11.5 }}>작물</dt><dd style={{ margin: 0 }}>{selected.seed.crop || '-'}</dd>
-              <dt className="mono" style={{ color: '#736c58', fontSize: 11.5 }}>수확연도</dt><dd style={{ margin: 0 }}>{selected.seed.harvest_year || '-'}</dd>
-              <dt className="mono" style={{ color: '#736c58', fontSize: 11.5 }}>보관위치</dt><dd style={{ margin: 0 }}>{selected.seed.location || '-'}</dd>
-              <dt className="mono" style={{ color: '#736c58', fontSize: 11.5 }}>재고</dt><dd style={{ margin: 0 }}>{Number(selected.seed.qty_g) || 0} g</dd>
-              <dt className="mono" style={{ color: '#736c58', fontSize: 11.5 }}>도입기관</dt><dd style={{ margin: 0 }}>{selected.seed.origin || '-'}</dd>
-              <dt className="mono" style={{ color: '#736c58', fontSize: 11.5 }}>재배지역</dt><dd style={{ margin: 0 }}>{selected.seed.region || '-'}</dd>
-              <dt className="mono" style={{ color: '#736c58', fontSize: 11.5 }}>비고</dt><dd style={{ margin: 0 }}>{selected.seed.notes || '-'}</dd>
+              <dt className="mono" style={{ color: '#736c58', fontSize: 11.5 }}>{t('field.crop')}</dt><dd style={{ margin: 0 }}>{selected.seed.crop || '-'}</dd>
+              <dt className="mono" style={{ color: '#736c58', fontSize: 11.5 }}>{t('field.harvestYear')}</dt><dd style={{ margin: 0 }}>{selected.seed.harvest_year || '-'}</dd>
+              <dt className="mono" style={{ color: '#736c58', fontSize: 11.5 }}>{t('field.location')}</dt><dd style={{ margin: 0 }}>{selected.seed.location || '-'}</dd>
+              <dt className="mono" style={{ color: '#736c58', fontSize: 11.5 }}>{t('field.qty')}</dt><dd style={{ margin: 0 }}>{Number(selected.seed.qty_g) || 0} g</dd>
+              <dt className="mono" style={{ color: '#736c58', fontSize: 11.5 }}>{t('field.origin')}</dt><dd style={{ margin: 0 }}>{selected.seed.origin || '-'}</dd>
+              <dt className="mono" style={{ color: '#736c58', fontSize: 11.5 }}>{t('field.region')}</dt><dd style={{ margin: 0 }}>{selected.seed.region || '-'}</dd>
+              <dt className="mono" style={{ color: '#736c58', fontSize: 11.5 }}>{t('field.notes')}</dt><dd style={{ margin: 0 }}>{selected.seed.notes || '-'}</dd>
             </dl>
 
             {(selected.seed.generation || selected.seed.pedigree) && (
               <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px dashed var(--line)' }}>
-                <div className="mono" style={{ fontSize: 11, color: '#736c58', textTransform: 'uppercase', marginBottom: 8 }}>세대 / Pedigree</div>
+                <div className="mono" style={{ fontSize: 11, color: '#736c58', textTransform: 'uppercase', marginBottom: 8 }}>{t('detail.genPedigree')}</div>
                 <div style={{ fontSize: 13.5 }}>
                   {selected.seed.generation && <b>{selected.seed.generation}</b>}
                   {selected.seed.generation && selected.seed.pedigree ? ' · ' : ''}
                   {selected.seed.pedigree && <span className="mono">{selected.seed.pedigree}</span>}
-                  {selected.seed.fixed_line && <span className="staff-badge" style={{ marginLeft: 6 }}>🔒 고정계통</span>}
+                  {selected.seed.fixed_line && <span className="staff-badge" style={{ marginLeft: 6 }}>{t('detail.fixedLine')}</span>}
                 </div>
               </div>
             )}
 
-            {detailLoading && <p style={{ fontSize: 12, color: '#847d68', marginTop: 12 }}>계보 불러오는 중...</p>}
+            {detailLoading && <p style={{ fontSize: 12, color: '#847d68', marginTop: 12 }}>{t('detail.loadingLineage')}</p>}
 
             {!detailLoading && selected.ancestors.length > 0 && (
               <div style={{ marginTop: 16 }}>
-                <div className="mono" style={{ fontSize: 11, color: '#736c58', textTransform: 'uppercase', marginBottom: 8 }}>세대 계보</div>
+                <div className="mono" style={{ fontSize: 11, color: '#736c58', textTransform: 'uppercase', marginBottom: 8 }}>{t('detail.lineage')}</div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 4 }}>
                   {selected.ancestors.map((a, i) => (
                     <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -184,7 +186,7 @@ export default function SearchPage() {
                           cursor: a.seed ? 'pointer' : 'default', textAlign: 'left',
                         }}
                       >
-                        {a.seed ? (a.seed.variety || '-') : '미등록'}
+                        {a.seed ? (a.seed.variety || '-') : t('detail.unregistered')}
                         <div className="mono" style={{ fontSize: 10, color: '#847d68' }}>{a.code}</div>
                       </button>
                       <span style={{ color: '#a3987c' }}>→</span>
@@ -195,7 +197,7 @@ export default function SearchPage() {
                     background: 'var(--green-deep)', borderRadius: 6, padding: '6px 10px',
                   }}>
                     {selected.seed.variety || '-'}
-                    <div className="mono" style={{ fontSize: 10, color: 'rgba(255,255,255,0.75)' }}>{selected.seed.code} · 현재</div>
+                    <div className="mono" style={{ fontSize: 10, color: 'rgba(255,255,255,0.75)' }}>{selected.seed.code} · {t('detail.current')}</div>
                   </span>
                 </div>
               </div>
@@ -204,7 +206,7 @@ export default function SearchPage() {
             {!detailLoading && selected.children.length > 0 && (
               <div style={{ marginTop: 16 }}>
                 <div className="mono" style={{ fontSize: 11, color: '#736c58', textTransform: 'uppercase', marginBottom: 8 }}>
-                  이 종자를 심어서 얻은 종자 ({selected.children.length})
+                  {t('detail.children', { n: selected.children.length })}
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                   {selected.children.map((c) => (
@@ -226,14 +228,14 @@ export default function SearchPage() {
 
             {!detailLoading && selected.transactions.length > 0 && (
               <table style={{ marginTop: 16, boxShadow: 'none' }}>
-                <thead><tr><th>일자</th><th>구분</th><th>변동</th><th>담당자</th></tr></thead>
+                <thead><tr><th>{t('detail.tx.date')}</th><th>{t('detail.tx.type')}</th><th>{t('detail.tx.change')}</th><th>{t('detail.tx.by')}</th></tr></thead>
                 <tbody>
-                  {selected.transactions.map((t) => (
-                    <tr key={t.id}>
-                      <td>{new Date(t.created_at).toLocaleDateString('ko-KR')}</td>
-                      <td>{t.type}</td>
-                      <td>{t.type === '출고' ? '-' : '+'}{t.qty} g</td>
-                      <td>{t.by_name || '-'}</td>
+                  {selected.transactions.map((tx) => (
+                    <tr key={tx.id}>
+                      <td>{new Date(tx.created_at).toLocaleDateString(lang === 'en' ? 'en-US' : 'ko-KR')}</td>
+                      <td>{DICT[`txType.${tx.type}`] ? t(`txType.${tx.type}`) : tx.type}</td>
+                      <td>{tx.type === '출고' ? '-' : '+'}{tx.qty} g</td>
+                      <td>{tx.by_name || '-'}</td>
                     </tr>
                   ))}
                 </tbody>
