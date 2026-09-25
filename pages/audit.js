@@ -3,15 +3,10 @@ import { useRouter } from 'next/router';
 import { supabase } from '../lib/supabaseClient';
 import { useProfile } from '../lib/useProfile';
 import Nav from '../components/Nav';
+import { useLang } from '../lib/i18n';
 
-const TABLE_LABEL = {
-  seeds: '종자',
-  seed_transactions: '입출고기록',
-  seed_requests: '종자요청',
-  lab_reservations: '실험실예약',
-  bed_reservations: '배드예약',
-};
-const ACTION_LABEL = { INSERT: '추가', UPDATE: '수정', DELETE: '삭제' };
+// 테이블/동작 이름은 lib/i18n.js의 'audit.tbl.*', 'audit.act.*'에 있습니다
+const TABLES = ['seeds', 'seed_transactions', 'seed_requests', 'lab_reservations', 'bed_reservations'];
 const ACTION_COLOR = {
   INSERT: { bg: 'rgba(63,93,58,0.14)', fg: 'var(--green-deep)' },
   UPDATE: { bg: 'rgba(201,162,75,0.2)', fg: '#7a5d15' },
@@ -19,10 +14,11 @@ const ACTION_COLOR = {
 };
 
 function ActionBadge({ action }) {
+  const { tMaybe } = useLang();
   const c = ACTION_COLOR[action] || {};
   return (
     <span style={{ fontFamily: 'IBM Plex Mono, monospace', fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: c.bg, color: c.fg }}>
-      {ACTION_LABEL[action] || action}
+      {tMaybe('audit.act', action)}
     </span>
   );
 }
@@ -42,14 +38,15 @@ function diffFields(oldData, newData) {
   return rows;
 }
 
-function fmt(v) {
-  if (v === null || v === undefined || v === '') return '(비어있음)';
+function fmt(v, t) {
+  if (v === null || v === undefined || v === '') return t('audit.empty');
   if (typeof v === 'object') return JSON.stringify(v);
   return String(v);
 }
 
 export default function AuditLogPage() {
   const router = useRouter();
+  const { t, tMaybe, fmtDateTime } = useLang();
   const { session, profile, isDeveloper, loading } = useProfile();
 
   const [logs, setLogs] = useState([]);
@@ -77,45 +74,45 @@ export default function AuditLogPage() {
 
   useEffect(() => {
     if (!isDeveloper) return;
-    const t = setTimeout(loadLogs, 200);
-    return () => clearTimeout(t);
+    const timer = setTimeout(loadLogs, 200);
+    return () => clearTimeout(timer);
   }, [isDeveloper, loadLogs]);
 
-  if (loading || !session || !profile || !isDeveloper) return <div className="wrap"><p>불러오는 중...</p></div>;
+  if (loading || !session || !profile || !isDeveloper) return <div className="wrap"><p>{t('common.loading')}</p></div>;
 
   return (
     <div className="wrap">
       <Nav profile={profile} isDeveloper={isDeveloper} />
 
       <div className="card">
-        <h4 className="serif" style={{ marginTop: 0 }}>수정 이력 (개발자 전용)</h4>
+        <h4 className="serif" style={{ marginTop: 0 }}>{t('audit.title')}</h4>
         <p style={{ fontSize: 11.5, color: '#847d68', marginTop: -6 }}>
-          종자·입출고·요청·예약(실험실/배드) 데이터의 추가·수정·삭제 기록입니다. 누가, 언제, 무엇을 바꿨는지 확인할 수 있습니다.
+          {t('audit.desc')}
         </p>
         <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
           <select value={tableFilter} onChange={(e) => setTableFilter(e.target.value)} style={{ maxWidth: 200 }}>
-            <option value="">전체 테이블</option>
-            {Object.entries(TABLE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            <option value="">{t('audit.allTables')}</option>
+            {TABLES.map((k) => <option key={k} value={k}>{tMaybe('audit.tbl', k)}</option>)}
           </select>
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="종자코드·이름 등으로 검색" />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t('audit.searchPlaceholder')} />
         </div>
         <div className="mono" style={{ fontSize: 12, color: '#5c574a', marginBottom: 10 }}>
-          {fetching ? '불러오는 중...' : `${logs.length}건`}
+          {fetching ? t('common.loading') : t('common.count', { n: logs.length })}
         </div>
         <div style={{ maxHeight: 480, overflow: 'auto' }}>
           <table>
-            <thead><tr><th>일시</th><th>테이블</th><th>항목</th><th>동작</th><th>담당자</th><th></th></tr></thead>
+            <thead><tr><th>{t('audit.when')}</th><th>{t('audit.table')}</th><th>{t('audit.item')}</th><th>{t('audit.action')}</th><th>{t('audit.by')}</th><th></th></tr></thead>
             <tbody>
               {logs.length === 0 ? (
-                <tr><td colSpan={6} style={{ textAlign: 'center', color: '#847d68', padding: 24 }}>기록이 없습니다.</td></tr>
+                <tr><td colSpan={6} style={{ textAlign: 'center', color: '#847d68', padding: 24 }}>{t('audit.noRecords')}</td></tr>
               ) : logs.map((l) => (
                 <tr key={l.id} onClick={() => setSelected(l)} style={{ cursor: 'pointer' }}>
-                  <td className="mono" style={{ fontSize: 12 }}>{new Date(l.changed_at).toLocaleString('ko-KR')}</td>
-                  <td>{TABLE_LABEL[l.table_name] || l.table_name}</td>
+                  <td className="mono" style={{ fontSize: 12 }}>{fmtDateTime(l.changed_at)}</td>
+                  <td>{tMaybe('audit.tbl', l.table_name)}</td>
                   <td className="code-cell">{l.record_label || l.record_id || '-'}</td>
                   <td><ActionBadge action={l.action} /></td>
-                  <td>{l.changed_by_name || '(알수없음)'}</td>
-                  <td style={{ fontSize: 12, color: 'var(--green-deep)' }}>자세히 →</td>
+                  <td>{l.changed_by_name || t('common.unknown')}</td>
+                  <td style={{ fontSize: 12, color: 'var(--green-deep)' }}>{t('audit.details')}</td>
                 </tr>
               ))}
             </tbody>
@@ -130,20 +127,20 @@ export default function AuditLogPage() {
         >
           <div className="card" style={{ maxWidth: 640, width: '100%', maxHeight: '85vh', overflowY: 'auto', position: 'relative' }}>
             <button onClick={() => setSelected(null)} style={{ position: 'absolute', top: 14, right: 16, background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#736c58' }}>&times;</button>
-            <h3 className="serif" style={{ marginTop: 0 }}>{TABLE_LABEL[selected.table_name] || selected.table_name} · {selected.record_label || selected.record_id}</h3>
+            <h3 className="serif" style={{ marginTop: 0 }}>{tMaybe('audit.tbl', selected.table_name)} · {selected.record_label || selected.record_id}</h3>
             <div className="mono" style={{ fontSize: 12, color: '#5c574a', marginBottom: 4 }}>
-              {new Date(selected.changed_at).toLocaleString('ko-KR')} · {selected.changed_by_name || '(알수없음)'} · <ActionBadge action={selected.action} />
+              {fmtDateTime(selected.changed_at)} · {selected.changed_by_name || t('common.unknown')} · <ActionBadge action={selected.action} />
             </div>
 
             <div style={{ marginTop: 16 }}>
               {selected.action === 'INSERT' && (
                 <>
-                  <div className="mono" style={{ fontSize: 11, color: '#736c58', textTransform: 'uppercase', marginBottom: 8 }}>새로 추가된 내용</div>
+                  <div className="mono" style={{ fontSize: 11, color: '#736c58', textTransform: 'uppercase', marginBottom: 8 }}>{t('audit.inserted')}</div>
                   <table>
-                    <thead><tr><th>항목</th><th>값</th></tr></thead>
+                    <thead><tr><th>{t('audit.field')}</th><th>{t('audit.value')}</th></tr></thead>
                     <tbody>
                       {Object.entries(selected.new_data || {}).filter(([k]) => !['id'].includes(k)).map(([k, v]) => (
-                        <tr key={k}><td className="mono" style={{ fontSize: 12 }}>{k}</td><td>{fmt(v)}</td></tr>
+                        <tr key={k}><td className="mono" style={{ fontSize: 12 }}>{k}</td><td>{fmt(v, t)}</td></tr>
                       ))}
                     </tbody>
                   </table>
@@ -151,12 +148,12 @@ export default function AuditLogPage() {
               )}
               {selected.action === 'DELETE' && (
                 <>
-                  <div className="mono" style={{ fontSize: 11, color: '#736c58', textTransform: 'uppercase', marginBottom: 8 }}>삭제 직전 내용</div>
+                  <div className="mono" style={{ fontSize: 11, color: '#736c58', textTransform: 'uppercase', marginBottom: 8 }}>{t('audit.deleted')}</div>
                   <table>
-                    <thead><tr><th>항목</th><th>값</th></tr></thead>
+                    <thead><tr><th>{t('audit.field')}</th><th>{t('audit.value')}</th></tr></thead>
                     <tbody>
                       {Object.entries(selected.old_data || {}).filter(([k]) => !['id'].includes(k)).map(([k, v]) => (
-                        <tr key={k}><td className="mono" style={{ fontSize: 12 }}>{k}</td><td>{fmt(v)}</td></tr>
+                        <tr key={k}><td className="mono" style={{ fontSize: 12 }}>{k}</td><td>{fmt(v, t)}</td></tr>
                       ))}
                     </tbody>
                   </table>
@@ -164,18 +161,18 @@ export default function AuditLogPage() {
               )}
               {selected.action === 'UPDATE' && (
                 <>
-                  <div className="mono" style={{ fontSize: 11, color: '#736c58', textTransform: 'uppercase', marginBottom: 8 }}>바뀐 항목만 표시</div>
+                  <div className="mono" style={{ fontSize: 11, color: '#736c58', textTransform: 'uppercase', marginBottom: 8 }}>{t('audit.changedOnly')}</div>
                   {diffFields(selected.old_data, selected.new_data).length === 0 ? (
-                    <p style={{ fontSize: 13, color: '#847d68' }}>실제로 값이 바뀐 항목이 없습니다.</p>
+                    <p style={{ fontSize: 13, color: '#847d68' }}>{t('audit.noChange')}</p>
                   ) : (
                     <table>
-                      <thead><tr><th>항목</th><th>수정 전</th><th>수정 후</th></tr></thead>
+                      <thead><tr><th>{t('audit.field')}</th><th>{t('audit.before')}</th><th>{t('audit.after')}</th></tr></thead>
                       <tbody>
                         {diffFields(selected.old_data, selected.new_data).map((d) => (
                           <tr key={d.key}>
                             <td className="mono" style={{ fontSize: 12 }}>{d.key}</td>
-                            <td style={{ color: 'var(--danger)' }}>{fmt(d.before)}</td>
-                            <td style={{ color: 'var(--green-deep)' }}>{fmt(d.after)}</td>
+                            <td style={{ color: 'var(--danger)' }}>{fmt(d.before, t)}</td>
+                            <td style={{ color: 'var(--green-deep)' }}>{fmt(d.after, t)}</td>
                           </tr>
                         ))}
                       </tbody>

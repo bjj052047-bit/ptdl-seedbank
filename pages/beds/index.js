@@ -3,10 +3,9 @@ import { useRouter } from 'next/router';
 import { supabase } from '../../lib/supabaseClient';
 import { useProfile } from '../../lib/useProfile';
 import Nav from '../../components/Nav';
+import { useLang } from '../../lib/i18n';
 
-const DOW = ['일', '월', '화', '수', '목', '금', '토'];
-
-const STATUS_LABEL = { pending: '대기중(승인전)', approved: '승인됨', rejected: '거절됨' };
+// 상태 이름은 lib/i18n.js의 'bed.status.*'에 있습니다
 const STATUS_COLOR = {
   pending: { bg: 'rgba(201,162,75,0.2)', fg: '#7a5d15' },
   approved: { bg: 'rgba(63,93,58,0.14)', fg: 'var(--green-deep)' },
@@ -14,10 +13,11 @@ const STATUS_COLOR = {
 };
 
 function StatusBadge({ status }) {
+  const { tMaybe } = useLang();
   const c = STATUS_COLOR[status] || {};
   return (
     <span style={{ fontFamily: 'IBM Plex Mono, monospace', fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: c.bg, color: c.fg }}>
-      {STATUS_LABEL[status] || status}
+      {tMaybe('bed.status', status)}
     </span>
   );
 }
@@ -39,6 +39,7 @@ function buildMonthGrid(year, month) {
 
 export default function BedsPage() {
   const router = useRouter();
+  const { t, tMaybe, yearMonth, dow } = useLang();
   const { session, profile, isStaff, isSupervisor, isDeveloper, loading } = useProfile();
   const isAdmin = isStaff || isSupervisor || isDeveloper;
 
@@ -203,15 +204,15 @@ export default function BedsPage() {
     const overlaps = existingList.filter((r) => r.status !== 'rejected' && newStart <= r.end_date && newEnd >= r.start_date);
     if (overlaps.length === 0) return true;
     const detail = overlaps.map((r) => `${r.start_date}~${r.end_date} (${r.user_name})`).join(', ');
-    return window.confirm(`${detail} 기간과 예약이 겹칩니다. 공유하도록 협의하셨나요?`);
+    return window.confirm(t('bed.confirmOverlap', { detail }));
   }
 
   async function handleReserve(e) {
     e.preventDefault();
     setFormMsg(null);
-    if (!selectedBedId) { setFormMsg({ type: 'err', text: '배드를 선택하세요.' }); return; }
-    if (!startDate || !endDate) { setFormMsg({ type: 'err', text: '시작일과 종료일을 모두 선택하세요.' }); return; }
-    if (endDate < startDate) { setFormMsg({ type: 'err', text: '종료일은 시작일보다 빠를 수 없습니다.' }); return; }
+    if (!selectedBedId) { setFormMsg({ type: 'err', text: t('bed.err.noBed') }); return; }
+    if (!startDate || !endDate) { setFormMsg({ type: 'err', text: t('bed.err.noDates') }); return; }
+    if (endDate < startDate) { setFormMsg({ type: 'err', text: t('bed.err.endBeforeStart') }); return; }
 
     if (!checkOverlapAndConfirm(bedReservations, startDate, endDate)) return;
 
@@ -228,11 +229,11 @@ export default function BedsPage() {
       status: 'pending',
     });
     if (error) {
-      setFormMsg({ type: 'err', text: `예약 실패: ${error.message}` });
+      setFormMsg({ type: 'err', text: t('bed.err.reserve', { msg: error.message }) });
       setBusy(false);
       return;
     }
-    setFormMsg({ type: 'ok', text: `${startDate} ~ ${endDate} 예약을 신청했습니다. 담당자/승인자가 승인하면 확정됩니다.` });
+    setFormMsg({ type: 'ok', text: t('bed.ok.reserve', { start: startDate, end: endDate }) });
     setStartDate('');
     setEndDate('');
     setCrop('');
@@ -243,10 +244,10 @@ export default function BedsPage() {
   }
 
   async function handleCancel(r) {
-    if (!window.confirm(`${r.start_date} ~ ${r.end_date} 예약을 취소할까요?`)) return;
+    if (!window.confirm(t('bed.confirmCancel', { start: r.start_date, end: r.end_date }))) return;
     setActingId(r.id);
     const { error } = await supabase.from('bed_reservations').delete().eq('id', r.id);
-    if (error) alert(`취소 실패: ${error.message}`);
+    if (error) alert(t('common.cancelFailed', { msg: error.message }));
     await reloadAll();
     setActingId(null);
   }
@@ -257,31 +258,31 @@ export default function BedsPage() {
     const suggested = todayStrForFinish() < r.start_date ? r.start_date
       : (todayStrForFinish() > r.end_date ? r.end_date : todayStrForFinish());
     const input = window.prompt(
-      `실제로 종료된 날짜를 입력하세요 (YYYY-MM-DD). 이 날짜 다음날부터는 다른 사람이 예약할 수 있게 됩니다.\n(원래 예약 기간: ${r.start_date} ~ ${r.end_date})`,
+      t('bed.promptFinish', { start: r.start_date, end: r.end_date }),
       suggested
     );
     if (input === null) return; // 취소함
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(input)) { alert('날짜 형식이 올바르지 않습니다. 예: 2026-07-20'); return; }
-    if (input < r.start_date) { alert('시작일보다 빠른 날짜로는 종료할 수 없습니다.'); return; }
-    if (input >= r.end_date) { alert('원래 종료일보다 빠른 날짜를 입력해야 종료 처리가 됩니다.'); return; }
-    if (!window.confirm(`${r.start_date} ~ ${input} 로 종료 처리할까요? (원래 종료일 ${r.end_date}는 취소되고, 이후 날짜는 예약 가능해집니다)`)) return;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(input)) { alert(t('bed.err.dateFormat')); return; }
+    if (input < r.start_date) { alert(t('bed.err.beforeStart')); return; }
+    if (input >= r.end_date) { alert(t('bed.err.notEarlier')); return; }
+    if (!window.confirm(t('bed.confirmFinish', { start: r.start_date, input, end: r.end_date }))) return;
 
     setActingId(r.id);
     const { error } = await supabase.from('bed_reservations').update({ end_date: input }).eq('id', r.id);
-    if (error) alert(`처리 실패: ${error.message}`);
+    if (error) alert(t('common.actionFailed', { msg: error.message }));
     await reloadAll();
     setActingId(null);
   }
   function todayStrForFinish() { return toDateStr(new Date()); }
 
   async function handleApproval(r, action) {
-    const label = action === 'approved' ? '승인' : '거절';
-    if (!window.confirm(`${r.bed_id} (${r.start_date}~${r.end_date}, ${r.user_name}님) 예약을 ${label}할까요?`)) return;
+    const label = action === 'approved' ? t('common.approve') : t('common.reject');
+    if (!window.confirm(t('bed.confirmApproval', { bed: r.bed_id, start: r.start_date, end: r.end_date, user: r.user_name, action: label }))) return;
     setApprovingId(r.id);
     const { error } = await supabase.from('bed_reservations').update({
       status: action, approved_by: profile.id, approved_at: new Date().toISOString(),
     }).eq('id', r.id);
-    if (error) alert(`처리 실패: ${error.message}`);
+    if (error) alert(t('common.actionFailed', { msg: error.message }));
     await reloadAll();
     setApprovingId(null);
   }
@@ -299,8 +300,8 @@ export default function BedsPage() {
 
   async function saveEdit(r) {
     setEditMsg(null);
-    if (!editStart || !editEnd) { setEditMsg({ type: 'err', text: '시작일과 종료일을 모두 입력하세요.' }); return; }
-    if (editEnd < editStart) { setEditMsg({ type: 'err', text: '종료일은 시작일보다 빠를 수 없습니다.' }); return; }
+    if (!editStart || !editEnd) { setEditMsg({ type: 'err', text: t('bed.err.noDatesEdit') }); return; }
+    if (editEnd < editStart) { setEditMsg({ type: 'err', text: t('bed.err.endBeforeStart') }); return; }
 
     const { data: others } = await supabase.from('bed_reservations').select('*').eq('bed_id', r.bed_id).neq('id', r.id);
     if (!checkOverlapAndConfirm(others || [], editStart, editEnd)) return;
@@ -315,13 +316,13 @@ export default function BedsPage() {
       approved_by: null,
       approved_at: null,
     }).eq('id', r.id);
-    if (error) { setEditMsg({ type: 'err', text: `저장 실패: ${error.message}` }); return; }
+    if (error) { setEditMsg({ type: 'err', text: t('common.saveFailed', { msg: error.message }) }); return; }
     setEditingId(null);
     await reloadAll();
   }
 
   if (loading || !session || !profile || profile.status !== 'approved') {
-    return <div className="wrap"><p>불러오는 중...</p></div>;
+    return <div className="wrap"><p>{t('common.loading')}</p></div>;
   }
 
   const grid = buildMonthGrid(viewYear, viewMonth);
@@ -333,14 +334,14 @@ export default function BedsPage() {
       <Nav profile={profile} isStaff={isStaff} isSupervisor={isSupervisor} isDeveloper={isDeveloper} />
 
       <div className="card">
-        <h4 className="serif" style={{ marginTop: 0 }}>배드 예약하기</h4>
+        <h4 className="serif" style={{ marginTop: 0 }}>{t('bed.formTitle')}</h4>
         <p style={{ fontSize: 11.5, color: '#847d68', marginTop: -6, marginBottom: 10 }}>
-          예약을 신청하면 바로 확정되지 않고, 담당자/승인자가 승인해야 최종 반영됩니다.
+          {t('bed.formHelp')}
         </p>
         <form onSubmit={handleReserve}>
           <div className="bed-form-row">
             <div className="field">
-              <label>배드 선택 *</label>
+              <label>{t('bed.selectLabel')}</label>
               <select value={selectedBedId} onChange={(e) => setSelectedBedId(e.target.value)}>
                 {bedsByFacility.map((g) => (
                   <optgroup key={g.facility} label={g.facility}>
@@ -350,27 +351,27 @@ export default function BedsPage() {
               </select>
             </div>
             <div className="field">
-              <label>시작일 * (직접 입력 가능)</label>
+              <label>{t('bed.startLabel')}</label>
               <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
             </div>
             <div className="field">
-              <label>종료일 * (직접 입력 가능)</label>
+              <label>{t('bed.endLabel')}</label>
               <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
             </div>
-            <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? '신청 중...' : '예약 신청하기'}</button>
+            <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? t('bed.applying') : t('bed.apply')}</button>
           </div>
           <div className="bed-form-row">
             <div className="field" style={{ flex: 1 }}>
-              <label>재배 작물 (선택)</label>
-              <input value={crop} onChange={(e) => setCrop(e.target.value)} placeholder="예: 벼 F2" />
+              <label>{t('bed.cropLabel')}</label>
+              <input value={crop} onChange={(e) => setCrop(e.target.value)} placeholder={t('bed.cropPlaceholder')} />
             </div>
             <div className="field" style={{ flex: 1 }}>
-              <label>용도 (선택)</label>
-              <input value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="예: 세대 진전" />
+              <label>{t('bed.purposeLabel')}</label>
+              <input value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder={t('bed.purposePlaceholder')} />
             </div>
             <div className="field" style={{ flex: 1.5 }}>
-              <label>비고 (선택)</label>
-              <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="특이사항이 있으면 적어주세요" />
+              <label>{t('bed.notesLabel')}</label>
+              <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={t('bed.notesPlaceholder')} />
             </div>
           </div>
           {formMsg && <div className={`msg ${formMsg.type}`}>{formMsg.text}</div>}
@@ -380,13 +381,13 @@ export default function BedsPage() {
           <div className="cal-header">
             <button type="button" className="btn btn-ghost" style={{ padding: '5px 10px', fontSize: 12 }} onClick={goPrevMonth}>&larr;</button>
             <div className="mono" style={{ fontSize: 14, fontWeight: 700 }}>
-              {selectedBed ? `${selectedBed.id} (${selectedBed.facility})` : '배드'} · {viewYear}년 {viewMonth + 1}월
-              <button type="button" className="btn btn-ghost" style={{ padding: '3px 8px', fontSize: 11, marginLeft: 8 }} onClick={goToday}>오늘</button>
+              {selectedBed ? `${selectedBed.id} (${selectedBed.facility})` : t('bed.bed')} · {yearMonth(viewYear, viewMonth)}
+              <button type="button" className="btn btn-ghost" style={{ padding: '3px 8px', fontSize: 11, marginLeft: 8 }} onClick={goToday}>{t('common.today')}</button>
             </div>
             <button type="button" className="btn btn-ghost" style={{ padding: '5px 10px', fontSize: 12 }} onClick={goNextMonth}>&rarr;</button>
           </div>
           <div className="cal-grid-mini" style={{ marginBottom: 4 }}>
-            {DOW.map((d) => <div key={d} className="cal-dow">{d}</div>)}
+            {dow.map((d) => <div key={d} className="cal-dow">{d}</div>)}
           </div>
           <div className="cal-grid-mini">
             {grid.map((date, i) => {
@@ -409,27 +410,27 @@ export default function BedsPage() {
                   type="button"
                   className={cls.join(' ')}
                   onClick={() => pickCalendarDate(dateStr)}
-                  title={occ.map((o) => `${o.user_name} (${o.start_date}~${o.end_date}) [${STATUS_LABEL[o.status]}]`).join('\n')}
+                  title={occ.map((o) => `${o.user_name} (${o.start_date}~${o.end_date}) [${tMaybe('bed.status', o.status)}]`).join('\n')}
                 >
                   <span className="cal-date">{date.getDate()}</span>
-                  {occ.length > 0 && <span className="cal-occ-count">{occ.length}건</span>}
+                  {occ.length > 0 && <span className="cal-occ-count">{t('common.count', { n: occ.length })}</span>}
                 </button>
               );
             })}
           </div>
           <p style={{ fontSize: 11, color: '#847d68', marginTop: 8 }}>
-            진한 보라 = 승인된 예약, 연한 주황 = 승인 대기 중인 예약, 초록 테두리 = 지금 고르는 중인 기간. 날짜를 클릭해서 시작일/종료일을 고르거나, 위 입력칸에 직접 타이핑해도 됩니다.
+            {t('bed.legend')}
           </p>
         </div>
       </div>
 
       <div className="card">
-        <h4 className="serif" style={{ marginTop: 0 }}>{selectedBed ? `${selectedBed.id} 예약 목록` : '예약 목록'} ({bedReservations.length})</h4>
+        <h4 className="serif" style={{ marginTop: 0 }}>{selectedBed ? t('bed.listTitle', { bed: selectedBed.id }) : t('bed.listTitleNoBed')} ({bedReservations.length})</h4>
         {bedReservations.length === 0 ? (
-          <p style={{ color: '#847d68', fontSize: 13 }}>아직 예약이 없습니다.</p>
+          <p style={{ color: '#847d68', fontSize: 13 }}>{t('bed.noneYet')}</p>
         ) : (
           <table>
-            <thead><tr><th>기간</th><th>예약자</th><th>작물</th><th>용도</th><th>비고</th><th>상태</th><th></th></tr></thead>
+            <thead><tr><th>{t('bed.period')}</th><th>{t('bed.user')}</th><th>{t('bed.crop')}</th><th>{t('bed.purpose')}</th><th>{t('field.notes')}</th><th>{t('bed.status')}</th><th></th></tr></thead>
             <tbody>
               {bedReservations.map((r) => (
                 <tr key={r.id}>
@@ -441,10 +442,10 @@ export default function BedsPage() {
                   <td><StatusBadge status={r.status} /></td>
                   <td style={{ display: 'flex', gap: 6 }}>
                     {(r.user_id === profile.id || isAdmin) && r.status !== 'rejected' && r.end_date >= todayStr && (
-                      <button className="btn btn-ghost" style={{ padding: '3px 9px', fontSize: 11.5 }} disabled={actingId === r.id} onClick={() => handleFinishEarly(r)}>종료</button>
+                      <button className="btn btn-ghost" style={{ padding: '3px 9px', fontSize: 11.5 }} disabled={actingId === r.id} onClick={() => handleFinishEarly(r)}>{t('bed.finish')}</button>
                     )}
                     {(r.user_id === profile.id || isAdmin) && (
-                      <button className="btn btn-danger" style={{ padding: '3px 9px', fontSize: 11.5 }} disabled={actingId === r.id} onClick={() => handleCancel(r)}>취소</button>
+                      <button className="btn btn-danger" style={{ padding: '3px 9px', fontSize: 11.5 }} disabled={actingId === r.id} onClick={() => handleCancel(r)}>{t('common.cancel')}</button>
                     )}
                   </td>
                 </tr>
@@ -456,12 +457,12 @@ export default function BedsPage() {
 
       {isAdmin && (
         <div className="card">
-          <h4 className="serif" style={{ marginTop: 0 }}>승인 대기 중인 배드 예약 ({pendingApprovals.length})</h4>
+          <h4 className="serif" style={{ marginTop: 0 }}>{t('bed.pendingTitle', { n: pendingApprovals.length })}</h4>
           {pendingApprovals.length === 0 ? (
-            <p style={{ color: '#847d68', fontSize: 13 }}>승인 대기 중인 예약이 없습니다.</p>
+            <p style={{ color: '#847d68', fontSize: 13 }}>{t('bed.noPending')}</p>
           ) : (
             <table>
-              <thead><tr><th>배드</th><th>시설</th><th>예약자</th><th>기간</th><th>작물</th><th>용도</th><th>비고</th><th></th></tr></thead>
+              <thead><tr><th>{t('bed.bed')}</th><th>{t('bed.facility')}</th><th>{t('bed.user')}</th><th>{t('bed.period')}</th><th>{t('bed.crop')}</th><th>{t('bed.purpose')}</th><th>{t('field.notes')}</th><th></th></tr></thead>
               <tbody>
                 {pendingApprovals.map((r) => (
                   <tr key={r.id}>
@@ -473,8 +474,8 @@ export default function BedsPage() {
                     <td>{r.purpose || '-'}</td>
                     <td>{r.notes || '-'}</td>
                     <td style={{ display: 'flex', gap: 6 }}>
-                      <button className="btn btn-primary" style={{ padding: '4px 10px', fontSize: 12 }} disabled={approvingId === r.id} onClick={() => handleApproval(r, 'approved')}>승인</button>
-                      <button className="btn btn-danger" style={{ padding: '4px 10px', fontSize: 12 }} disabled={approvingId === r.id} onClick={() => handleApproval(r, 'rejected')}>거절</button>
+                      <button className="btn btn-primary" style={{ padding: '4px 10px', fontSize: 12 }} disabled={approvingId === r.id} onClick={() => handleApproval(r, 'approved')}>{t('common.approve')}</button>
+                      <button className="btn btn-danger" style={{ padding: '4px 10px', fontSize: 12 }} disabled={approvingId === r.id} onClick={() => handleApproval(r, 'rejected')}>{t('common.reject')}</button>
                     </td>
                   </tr>
                 ))}
@@ -485,27 +486,27 @@ export default function BedsPage() {
       )}
 
       <div className="card">
-        <h4 className="serif" style={{ marginTop: 0 }}>나의 배드 예약 내역 ({myBedReservations.length})</h4>
+        <h4 className="serif" style={{ marginTop: 0 }}>{t('bed.myTitle', { n: myBedReservations.length })}</h4>
         {myBedReservations.length === 0 ? (
-          <p style={{ color: '#847d68', fontSize: 13 }}>아직 예약한 배드가 없습니다.</p>
+          <p style={{ color: '#847d68', fontSize: 13 }}>{t('bed.noMine')}</p>
         ) : (
           <table>
-            <thead><tr><th>배드</th><th>시설</th><th>기간</th><th>작물</th><th>용도</th><th>비고</th><th>상태</th><th></th></tr></thead>
+            <thead><tr><th>{t('bed.bed')}</th><th>{t('bed.facility')}</th><th>{t('bed.period')}</th><th>{t('bed.crop')}</th><th>{t('bed.purpose')}</th><th>{t('field.notes')}</th><th>{t('bed.status')}</th><th></th></tr></thead>
             <tbody>
               {myBedReservations.map((r) => (
                 editingId === r.id ? (
                   <tr key={r.id}>
                     <td colSpan={8}>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1.5fr auto auto', gap: 8, alignItems: 'end', padding: '8px 0' }}>
-                        <div className="field" style={{ margin: 0 }}><label>시작일</label><input type="date" value={editStart} onChange={(e) => setEditStart(e.target.value)} /></div>
-                        <div className="field" style={{ margin: 0 }}><label>종료일</label><input type="date" value={editEnd} onChange={(e) => setEditEnd(e.target.value)} /></div>
-                        <div className="field" style={{ margin: 0 }}><label>작물</label><input value={editCrop} onChange={(e) => setEditCrop(e.target.value)} /></div>
-                        <div className="field" style={{ margin: 0 }}><label>용도</label><input value={editPurpose} onChange={(e) => setEditPurpose(e.target.value)} /></div>
-                        <div className="field" style={{ margin: 0 }}><label>비고</label><input value={editNotes} onChange={(e) => setEditNotes(e.target.value)} /></div>
-                        <button className="btn btn-primary" style={{ padding: '9px 14px' }} onClick={() => saveEdit(r)}>저장</button>
-                        <button className="btn btn-ghost" style={{ padding: '9px 14px' }} onClick={cancelEdit}>취소</button>
+                        <div className="field" style={{ margin: 0 }}><label>{t('bed.start')}</label><input type="date" value={editStart} onChange={(e) => setEditStart(e.target.value)} /></div>
+                        <div className="field" style={{ margin: 0 }}><label>{t('bed.end')}</label><input type="date" value={editEnd} onChange={(e) => setEditEnd(e.target.value)} /></div>
+                        <div className="field" style={{ margin: 0 }}><label>{t('bed.crop')}</label><input value={editCrop} onChange={(e) => setEditCrop(e.target.value)} /></div>
+                        <div className="field" style={{ margin: 0 }}><label>{t('bed.purpose')}</label><input value={editPurpose} onChange={(e) => setEditPurpose(e.target.value)} /></div>
+                        <div className="field" style={{ margin: 0 }}><label>{t('field.notes')}</label><input value={editNotes} onChange={(e) => setEditNotes(e.target.value)} /></div>
+                        <button className="btn btn-primary" style={{ padding: '9px 14px' }} onClick={() => saveEdit(r)}>{t('common.save')}</button>
+                        <button className="btn btn-ghost" style={{ padding: '9px 14px' }} onClick={cancelEdit}>{t('common.cancel')}</button>
                       </div>
-                      <p style={{ fontSize: 11, color: '#847d68', margin: '0 0 6px' }}>저장하면 다시 승인 대기 상태로 바뀝니다.</p>
+                      <p style={{ fontSize: 11, color: '#847d68', margin: '0 0 6px' }}>{t('bed.editHelp')}</p>
                       {editMsg && <div className={`msg ${editMsg.type}`}>{editMsg.text}</div>}
                     </td>
                   </tr>
@@ -519,11 +520,11 @@ export default function BedsPage() {
                     <td>{r.notes || '-'}</td>
                     <td><StatusBadge status={r.status} /></td>
                     <td style={{ display: 'flex', gap: 6 }}>
-                      <button className="btn btn-ghost" style={{ padding: '3px 9px', fontSize: 11.5 }} onClick={() => startEdit(r)}>수정</button>
+                      <button className="btn btn-ghost" style={{ padding: '3px 9px', fontSize: 11.5 }} onClick={() => startEdit(r)}>{t('common.edit')}</button>
                       {r.status !== 'rejected' && r.end_date >= todayStr && (
-                        <button className="btn btn-ghost" style={{ padding: '3px 9px', fontSize: 11.5 }} disabled={actingId === r.id} onClick={() => handleFinishEarly(r)}>종료</button>
+                        <button className="btn btn-ghost" style={{ padding: '3px 9px', fontSize: 11.5 }} disabled={actingId === r.id} onClick={() => handleFinishEarly(r)}>{t('bed.finish')}</button>
                       )}
-                      <button className="btn btn-danger" style={{ padding: '3px 9px', fontSize: 11.5 }} disabled={actingId === r.id} onClick={() => handleCancel(r)}>취소</button>
+                      <button className="btn btn-danger" style={{ padding: '3px 9px', fontSize: 11.5 }} disabled={actingId === r.id} onClick={() => handleCancel(r)}>{t('common.cancel')}</button>
                     </td>
                   </tr>
                 )

@@ -3,11 +3,11 @@ import { useRouter } from 'next/router';
 import { supabase } from '../lib/supabaseClient';
 import { useProfile } from '../lib/useProfile';
 import Nav from '../components/Nav';
-
-const ROLE_LABEL = { staff: '담당자', supervisor: '승인자', researcher: '연구원' };
+import { useLang } from '../lib/i18n';
 
 export default function ApprovalsPage() {
   const router = useRouter();
+  const { t, tMaybe, fmtDate } = useLang();
   const { session, profile, isStaff, isSupervisor, isDeveloper, loading } = useProfile();
   const isAdmin = isSupervisor || isDeveloper;
 
@@ -36,17 +36,17 @@ export default function ApprovalsPage() {
   }, [isAdmin, loadProfiles]);
 
   async function handleAction(target, status) {
-    const label = status === 'approved' ? '승인' : '거절';
-    if (!window.confirm(`${target.name}(${target.email || '이메일 없음'}) 님의 가입을 ${label}할까요?`)) return;
+    const label = status === 'approved' ? t('common.approve') : t('common.reject');
+    if (!window.confirm(t('approvals.confirm', { name: target.name, email: target.email || t('approvals.noEmail'), action: label }))) return;
     setActingId(target.id);
     const { error } = await supabase.from('profiles').update({ status }).eq('id', target.id);
-    if (error) alert(`처리 실패: ${error.message}`);
+    if (error) alert(t('common.actionFailed', { msg: error.message }));
     await loadProfiles();
     setActingId(null);
   }
 
   if (loading || !session || !profile || !isAdmin) {
-    return <div className="wrap"><p>불러오는 중...</p></div>;
+    return <div className="wrap"><p>{t('common.loading')}</p></div>;
   }
 
   const pending = profiles.filter((p) => p.status === 'pending');
@@ -57,21 +57,21 @@ export default function ApprovalsPage() {
       <Nav profile={profile} isStaff={isStaff} isSupervisor={isSupervisor} isDeveloper={isDeveloper} />
 
       <div className="card">
-        <h4 className="serif" style={{ marginTop: 0 }}>가입 승인 대기 ({pending.length})</h4>
+        <h4 className="serif" style={{ marginTop: 0 }}>{t('approvals.pendingTitle', { n: pending.length })}</h4>
         {pending.length === 0 ? (
-          <p style={{ color: '#847d68', fontSize: 13 }}>승인 대기 중인 가입 신청이 없습니다.</p>
+          <p style={{ color: '#847d68', fontSize: 13 }}>{t('approvals.noPending')}</p>
         ) : (
           <table>
-            <thead><tr><th>가입일</th><th>이름</th><th>이메일</th><th></th></tr></thead>
+            <thead><tr><th>{t('approvals.joined')}</th><th>{t('common.name')}</th><th>{t('common.email')}</th><th></th></tr></thead>
             <tbody>
               {pending.map((p) => (
                 <tr key={p.id}>
-                  <td>{new Date(p.created_at).toLocaleDateString('ko-KR')}</td>
+                  <td>{fmtDate(p.created_at)}</td>
                   <td>{p.name}</td>
                   <td className="mono" style={{ fontSize: 12.5 }}>{p.email || '-'}</td>
                   <td style={{ display: 'flex', gap: 6 }}>
-                    <button className="btn btn-primary" style={{ padding: '4px 10px', fontSize: 12 }} disabled={actingId === p.id} onClick={() => handleAction(p, 'approved')}>승인</button>
-                    <button className="btn btn-danger" style={{ padding: '4px 10px', fontSize: 12 }} disabled={actingId === p.id} onClick={() => handleAction(p, 'rejected')}>거절</button>
+                    <button className="btn btn-primary" style={{ padding: '4px 10px', fontSize: 12 }} disabled={actingId === p.id} onClick={() => handleAction(p, 'approved')}>{t('common.approve')}</button>
+                    <button className="btn btn-danger" style={{ padding: '4px 10px', fontSize: 12 }} disabled={actingId === p.id} onClick={() => handleAction(p, 'rejected')}>{t('common.reject')}</button>
                   </td>
                 </tr>
               ))}
@@ -81,22 +81,22 @@ export default function ApprovalsPage() {
       </div>
 
       <div className="card">
-        <h4 className="serif" style={{ marginTop: 0 }}>전체 계정 ({others.length})</h4>
+        <h4 className="serif" style={{ marginTop: 0 }}>{t('approvals.allTitle', { n: others.length })}</h4>
         <table>
-          <thead><tr><th>가입일</th><th>이름</th><th>이메일</th><th>역할</th><th>상태</th><th></th></tr></thead>
+          <thead><tr><th>{t('approvals.joined')}</th><th>{t('common.name')}</th><th>{t('common.email')}</th><th>{t('approvals.role')}</th><th>{t('approvals.status')}</th><th></th></tr></thead>
           <tbody>
             {others.length === 0 ? (
-              <tr><td colSpan={6} style={{ textAlign: 'center', color: '#847d68', padding: 20 }}>계정이 없습니다.</td></tr>
+              <tr><td colSpan={6} style={{ textAlign: 'center', color: '#847d68', padding: 20 }}>{t('approvals.noAccounts')}</td></tr>
             ) : others.map((p) => (
               <tr key={p.id}>
-                <td>{new Date(p.created_at).toLocaleDateString('ko-KR')}</td>
+                <td>{fmtDate(p.created_at)}</td>
                 <td>{p.name}</td>
                 <td className="mono" style={{ fontSize: 12.5 }}>{p.email || '-'}</td>
-                <td>{ROLE_LABEL[p.role] || p.role}</td>
-                <td>{p.status === 'approved' ? '승인됨' : '거절됨'}</td>
+                <td>{tMaybe('role', p.role)}</td>
+                <td>{p.status === 'approved' ? t('approvals.approved') : t('approvals.rejected')}</td>
                 <td>
                   {p.status === 'rejected' && (
-                    <button className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }} disabled={actingId === p.id} onClick={() => handleAction(p, 'approved')}>다시 승인</button>
+                    <button className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }} disabled={actingId === p.id} onClick={() => handleAction(p, 'approved')}>{t('approvals.reapprove')}</button>
                   )}
                 </td>
               </tr>
@@ -104,7 +104,7 @@ export default function ApprovalsPage() {
           </tbody>
         </table>
         <p style={{ fontSize: 11.5, color: '#847d68', marginTop: 10 }}>
-          담당자/승인자 역할 변경은 아직 이 화면에서 지원하지 않습니다. Supabase 대시보드 → Table Editor → profiles 테이블에서 role 값을 직접 수정해주세요.
+          {t('approvals.roleHelp')}
         </p>
       </div>
     </div>

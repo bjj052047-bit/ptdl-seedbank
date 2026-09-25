@@ -2,11 +2,12 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { supabase } from '../lib/supabaseClient';
 import { useLang, DICT } from '../lib/i18n';
+import LangToggle from './LangToggle';
 
 
 export default function Nav({ profile, isStaff, isSupervisor, isDeveloper }) {
   const router = useRouter();
-  const { t, toggleLang } = useLang();
+  const { t } = useLang();
   const canApprove = isSupervisor || isDeveloper; // 가입 승인 권한
   const canManageInventory = isStaff || isSupervisor || isDeveloper; // 입출고·데이터관리 권한
 
@@ -28,7 +29,7 @@ export default function Nav({ profile, isStaff, isSupervisor, isDeveloper }) {
 
   return (
     <header style={{ borderBottom: '2px solid var(--ink)', paddingBottom: 14, marginBottom: 22 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
         <div>
           <div className="serif" style={{ fontWeight: 700, fontSize: 26, display: 'flex', alignItems: 'baseline', gap: 10 }}>
             {t('nav.title')}
@@ -36,20 +37,10 @@ export default function Nav({ profile, isStaff, isSupervisor, isDeveloper }) {
               PTDL
             </small>
           </div>
-          <div className="mono" style={{ fontSize: 12.5, color: '#5c574a' }}>
-            {t('nav.subtitle')}
-          </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {/* 한글 / English 전환 버튼 (로그인 여부와 무관하게 항상 표시) */}
-          <button
-            className="btn btn-ghost mono"
-            style={{ padding: '6px 12px', fontSize: 12 }}
-            onClick={toggleLang}
-            title="한글 / English"
-          >
-            🌐 {t('nav.langToggle')}
-          </button>
+          <LangToggle />
           {profile && (
             <>
               <span className={profile.role === 'researcher' ? 'role-badge' : 'staff-badge'}>

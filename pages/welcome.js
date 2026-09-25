@@ -1,10 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '../lib/supabaseClient';
+import { useLang } from '../lib/i18n';
+import LangToggle from '../components/LangToggle';
 
 // 로그인은 됐는데 profiles 테이블에 이름표가 없는 경우를 위한 안전장치 페이지
 export default function WelcomePage() {
   const router = useRouter();
+  const { t } = useLang();
   const [name, setName] = useState('');
   const [msg, setMsg] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -33,7 +36,7 @@ export default function WelcomePage() {
   async function handleSubmit(e) {
     e.preventDefault();
     if (!name.trim()) {
-      setMsg({ type: 'err', text: '이름을 입력해주세요.' });
+      setMsg({ type: 'err', text: t('welcome.err.name') });
       return;
     }
     setBusy(true);
@@ -47,7 +50,7 @@ export default function WelcomePage() {
       .from('profiles')
       .insert({ id: data.session.user.id, name: name.trim(), email: data.session.user.email, role: 'researcher' });
     if (error) {
-      setMsg({ type: 'err', text: `저장 실패: ${error.message}` });
+      setMsg({ type: 'err', text: t('common.saveFailed', { msg: error.message }) });
       setBusy(false);
       return;
     }
@@ -55,25 +58,26 @@ export default function WelcomePage() {
   }
 
   if (checking) {
-    return <div className="wrap"><p>확인 중...</p></div>;
+    return <div className="wrap"><p>{t('common.checking')}</p></div>;
   }
 
   return (
-    <div className="wrap" style={{ maxWidth: 420, paddingTop: 80 }}>
+    <div className="wrap" style={{ maxWidth: 420, paddingTop: 40 }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}><LangToggle /></div>
       <div className="serif" style={{ fontWeight: 700, fontSize: 22, marginBottom: 4 }}>
-        거의 다 됐습니다 👋
+        {t('welcome.title')}
       </div>
       <div className="mono" style={{ fontSize: 12, color: '#5c574a', marginBottom: 24 }}>
-        마지막으로 이름만 알려주세요
+        {t('welcome.subtitle')}
       </div>
       <div className="card">
         <form onSubmit={handleSubmit}>
           <div className="field">
-            <label>이름 *</label>
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="예: 홍길동" />
+            <label>{t('login.nameLabel')}</label>
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder={t('common.namePlaceholder')} />
           </div>
           <button className="btn btn-primary" style={{ width: '100%' }} disabled={busy} type="submit">
-            {busy ? '저장 중...' : '시작하기'}
+            {busy ? t('common.saving') : t('welcome.start')}
           </button>
         </form>
         {msg && <div className={`msg ${msg.type}`} style={{ marginTop: 12 }}>{msg.text}</div>}
