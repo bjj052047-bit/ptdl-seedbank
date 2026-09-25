@@ -545,3 +545,31 @@ create policy "resv_dev_delete_owner" on lab_reservation_devices for delete usin
   exists (select 1 from lab_reservations r where r.id = reservation_id and r.user_id = auth.uid())
   or exists (select 1 from profiles where id = auth.uid() and role in ('staff','supervisor','developer'))
 );
+
+-- ============================================================
+-- 마이그레이션: 승인자(supervisor)에게 종자실 담당자(staff) 권한 부여
+--             + 가입 승인 권한은 담당자(staff)에서 제외, 승인자/개발자만
+-- ============================================================
+drop policy if exists "seeds_insert_staff" on seeds;
+create policy "seeds_insert_staff" on seeds for insert with check (
+  exists (select 1 from profiles where id = auth.uid() and role in ('staff','supervisor','developer'))
+);
+drop policy if exists "seeds_update_staff" on seeds;
+create policy "seeds_update_staff" on seeds for update using (
+  exists (select 1 from profiles where id = auth.uid() and role in ('staff','supervisor','developer'))
+);
+drop policy if exists "seeds_delete_staff" on seeds;
+create policy "seeds_delete_staff" on seeds for delete using (
+  exists (select 1 from profiles where id = auth.uid() and role in ('staff','supervisor','developer'))
+);
+
+drop policy if exists "tx_insert_staff" on seed_transactions;
+create policy "tx_insert_staff" on seed_transactions for insert with check (
+  exists (select 1 from profiles where id = auth.uid() and role in ('staff','supervisor','developer'))
+);
+
+-- 가입 승인(profiles.status 변경)은 이제 담당자(staff)는 제외, 승인자·개발자만 가능
+drop policy if exists "profiles_update_status_by_admin" on profiles;
+create policy "profiles_update_status_by_admin" on profiles for update using (
+  exists (select 1 from profiles p where p.id = auth.uid() and p.role in ('supervisor','developer'))
+);

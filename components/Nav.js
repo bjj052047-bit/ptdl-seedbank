@@ -6,7 +6,8 @@ const ROLE_LABEL = { staff: '종자실 담당자', supervisor: '승인자', rese
 
 export default function Nav({ profile, isStaff, isSupervisor, isDeveloper }) {
   const router = useRouter();
-  const isAdmin = isStaff || isSupervisor || isDeveloper;
+  const canApprove = isSupervisor || isDeveloper; // 가입 승인 권한
+  const canManageInventory = isStaff || isSupervisor || isDeveloper; // 입출고·데이터관리 권한
 
   const tabs = [
     { href: '/', label: '종자 검색', staffOnly: false, adminOnly: false },
@@ -50,8 +51,8 @@ export default function Nav({ profile, isStaff, isSupervisor, isDeveloper }) {
       </div>
       <nav className="tabs">
         {tabs
-          .filter((t) => !t.staffOnly || isStaff || isDeveloper)
-          .filter((t) => !t.adminOnly || isAdmin)
+          .filter((t) => !t.staffOnly || canManageInventory)
+          .filter((t) => !t.adminOnly || canApprove)
           .map((t) => (
             <Link key={t.href} href={t.href} className={router.pathname === t.href ? 'active' : ''}>
               {t.label}

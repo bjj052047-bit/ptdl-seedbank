@@ -24,8 +24,8 @@ export default function IoPage() {
   useEffect(() => {
     if (loading) return;
     if (!session) { router.replace('/login'); return; }
-    if (!isStaff && !isDeveloper) { router.replace('/'); }
-  }, [session, isStaff, loading, router]);
+    if (!isStaff && !isSupervisor && !isDeveloper) { router.replace('/'); }
+  }, [session, isStaff, isSupervisor, isDeveloper, loading, router]);
 
   useEffect(() => {
     setDate(new Date().toISOString().slice(0, 10));
@@ -41,8 +41,8 @@ export default function IoPage() {
   }, []);
 
   useEffect(() => {
-    if (isStaff) loadLogs();
-  }, [isStaff, loadLogs]);
+    if (isStaff || isSupervisor || isDeveloper) loadLogs();
+  }, [isStaff, isSupervisor, isDeveloper, loadLogs]);
 
   useEffect(() => {
     const t = setTimeout(async () => {
@@ -108,7 +108,7 @@ export default function IoPage() {
     setBusy(false);
   }
 
-  if (loading || !session || (!isStaff && !isDeveloper)) return <div className="wrap"><p>불러오는 중...</p></div>;
+  if (loading || !session || (!isStaff && !isSupervisor && !isDeveloper)) return <div className="wrap"><p>불러오는 중...</p></div>;
 
   const filteredLogs = logs.filter((l) => !logFilter.trim() || (l.seeds?.code || '').toLowerCase().includes(logFilter.trim().toLowerCase()));
 

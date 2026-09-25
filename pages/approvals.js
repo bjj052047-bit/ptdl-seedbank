@@ -9,7 +9,7 @@ const ROLE_LABEL = { staff: '담당자', supervisor: '승인자', researcher: '�
 export default function ApprovalsPage() {
   const router = useRouter();
   const { session, profile, isStaff, isSupervisor, isDeveloper, loading } = useProfile();
-  const isAdmin = isStaff || isSupervisor || isDeveloper;
+  const isAdmin = isSupervisor || isDeveloper;
 
   const [profiles, setProfiles] = useState([]);
   const [actingId, setActingId] = useState(null);
