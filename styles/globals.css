@@ -183,7 +183,7 @@ nav.tabs a.active {
 .device-btn.selected { background: var(--green-deep); border-color: var(--green-deep); color: #fff; }
 
 /* ============================================================
-   배드 예약 페이지 전용 스타일
+   베드 예약 페이지 전용 스타일
    ============================================================ */
 
 .bed-form-row {

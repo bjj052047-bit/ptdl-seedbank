@@ -263,23 +263,23 @@ grant select, update on public.profiles to authenticated;
 -- ============================================================
 
 -- ============================================================
--- 마이그레이션: 배드(재배 공간) 예약 시스템
+-- 마이그레이션: 베드(재배 공간) 예약 시스템
 -- 이미 위쪽 schema.sql을 한 번 실행한 적이 있다면,
 -- Supabase SQL Editor에 이 블록부터 끝까지만 새로 붙여넣고 실행하면 됩니다.
 --
--- 실험실 예약과 다른 점: 배드는 "기간"(시작일~종료일) 단위로 예약하고,
--- 한 배드가 넓어서 여러 팀이 나눠 쓰는 경우가 있어 겹치는 예약을 DB가
+-- 실험실 예약과 다른 점: 베드는 "기간"(시작일~종료일) 단위로 예약하고,
+-- 한 베드가 넓어서 여러 팀이 나눠 쓰는 경우가 있어 겹치는 예약을 DB가
 -- 막지 않습니다 (화면에서 겹침을 미리 알려주고 사용자가 확인 후 진행).
 -- ============================================================
 
 -- ------------------------------------------------------------
--- 1) beds: 배드(재배 공간) 목록 - 시설별로 그룹핑
+-- 1) beds: 베드(재배 공간) 목록 - 시설별로 그룹핑
 -- ------------------------------------------------------------
 create table if not exists beds (
-  id text primary key,          -- 'GR01' 등 배드 코드
+  id text primary key,          -- 'GR01' 등 베드 코드
   facility text not null,        -- 'Growth Room 415' 등 시설명 (화면에서 그룹핑용)
   facility_order int not null default 0,  -- 시설 그룹이 화면에 나열되는 순서
-  sort_order int not null default 0        -- 같은 시설 안에서 배드가 나열되는 순서
+  sort_order int not null default 0        -- 같은 시설 안에서 베드가 나열되는 순서
 );
 
 insert into beds (id, facility, facility_order, sort_order) values
@@ -305,7 +305,7 @@ drop policy if exists "beds_select_authenticated" on beds;
 create policy "beds_select_authenticated" on beds for select using (auth.role() = 'authenticated');
 
 -- ------------------------------------------------------------
--- 2) bed_reservations: 배드 예약 (기간 단위, 겹침 허용)
+-- 2) bed_reservations: 베드 예약 (기간 단위, 겹침 허용)
 -- ------------------------------------------------------------
 create table if not exists bed_reservations (
   id uuid primary key default gen_random_uuid(),
@@ -344,7 +344,7 @@ grant select, insert, delete on public.bed_reservations to authenticated;
 -- ============================================================
 
 -- ============================================================
--- 마이그레이션: 배드 예약 - 작물/비고 분리, 승인 절차, 예약 수정 허용
+-- 마이그레이션: 베드 예약 - 작물/비고 분리, 승인 절차, 예약 수정 허용
 -- 이미 위쪽 schema.sql을 한 번 실행한 적이 있다면,
 -- Supabase SQL Editor에 이 블록부터 끝까지만 새로 붙여넣고 실행하면 됩니다.
 -- ============================================================

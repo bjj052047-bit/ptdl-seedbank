@@ -46,8 +46,8 @@ export default function BedsPage() {
   const today = useMemo(() => new Date(), []);
   const [beds, setBeds] = useState([]);
   const [selectedBedId, setSelectedBedId] = useState('');
-  const [bedReservations, setBedReservations] = useState([]); // 선택된 배드의 전체 예약
-  const [myBedReservations, setMyBedReservations] = useState([]); // 나의 배드 예약 (전체)
+  const [bedReservations, setBedReservations] = useState([]); // 선택된 베드의 전체 예약
+  const [myBedReservations, setMyBedReservations] = useState([]); // 나의 베드 예약 (전체)
   const [pendingApprovals, setPendingApprovals] = useState([]); // 승인 대기 (담당자/승인자용)
 
   const [viewYear, setViewYear] = useState(today.getFullYear());
@@ -63,7 +63,7 @@ export default function BedsPage() {
   const [actingId, setActingId] = useState(null);
   const [approvingId, setApprovingId] = useState(null);
 
-  // 나의 배드 예약 내역 - 인라인 수정
+  // 나의 베드 예약 내역 - 인라인 수정
   const [editingId, setEditingId] = useState(null);
   const [editStart, setEditStart] = useState('');
   const [editEnd, setEditEnd] = useState('');
@@ -157,7 +157,7 @@ export default function BedsPage() {
     ]);
   }
 
-  // 이 배드를 실제로 점유 중(거절되지 않은)인 예약들 - 승인 대기 중인 것도 참고용으로 포함
+  // 이 베드를 실제로 점유 중(거절되지 않은)인 예약들 - 승인 대기 중인 것도 참고용으로 포함
   function occupantsOn(dateStr) {
     return bedReservations.filter((r) => r.status !== 'rejected' && dateStr >= r.start_date && dateStr <= r.end_date);
   }
