@@ -1,9 +1,10 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '../lib/supabaseClient';
 import { useProfile } from '../lib/useProfile';
 import Nav from '../components/Nav';
 import { useLang, DICT } from '../lib/i18n';
+import { getBaseCode, compareMemberCodes } from '../lib/lineage';
 
 function cropTagClass(crop) {
   if (!crop) return 'crop-other';
@@ -23,6 +24,44 @@ export default function SearchPage() {
   const [searching, setSearching] = useState(false);
   const [selected, setSelected] = useState(null); // 선택된 종자 상세 (lineage 포함)
   const [detailLoading, setDetailLoading] = useState(false);
+  const [expanded, setExpanded] = useState(() => new Set()); // 펼쳐진 대표 코드들
+
+  // 52200-B, 52200-1, 52200-2 ... 를 대표 코드 52200 하나로 묶기
+  const groups = useMemo(() => {
+    const map = new Map();
+    for (const s of results) {
+      const base = getBaseCode(s.code);
+      if (!map.has(base)) map.set(base, []);
+      map.get(base).push(s);
+    }
+    return [...map.entries()].map(([base, members]) => {
+      members = members.slice().sort((a, b) => compareMemberCodes(a.code, b.code));
+      const uniq = (arr) => [...new Set(arr.filter(Boolean))];
+      const years = uniq(members.map((m) => m.harvest_year));
+      const locations = uniq(members.map((m) => m.location));
+      return {
+        base,
+        members,
+        crop: members[0].crop,
+        varieties: uniq(members.map((m) => m.variety)),
+        years: years.sort(),
+        locations,
+        totalQty: members.reduce((sum, m) => sum + (Number(m.qty_g) || 0), 0),
+        bulk: members.filter((m) => /-B$/i.test(m.code)).length,
+        single: members.filter((m) => /-\d+$/.test(m.code)).length,
+        // 묶을 게 없는 종자 (코드가 대표 코드 그대로이고 1개뿐)
+        isSolo: members.length === 1 && members[0].code === base,
+      };
+    });
+  }, [results]);
+
+  function toggleGroup(base) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(base)) next.delete(base); else next.add(base);
+      return next;
+    });
+  }
 
   useEffect(() => {
     if (loading) return;
@@ -32,7 +71,7 @@ export default function SearchPage() {
 
   const runSearch = useCallback(async (q, order) => {
     setSearching(true);
-    let req = supabase.from('seeds').select('*').order('harvest_year', { ascending: order === 'asc' }).limit(200);
+    let req = supabase.from('seeds').select('*').order('harvest_year', { ascending: order === 'asc' }).limit(1000);
     if (q.trim()) {
       req = req.or(`code.ilike.%${q.trim()}%,variety.ilike.%${q.trim()}%`);
     }
@@ -98,7 +137,8 @@ export default function SearchPage() {
       </div>
 
       <div className="mono" style={{ fontSize: 12.5, color: '#5c574a', marginBottom: 10 }}>
-        {searching ? t('search.searching') : t('search.resultCount', { n: results.length })}
+        {searching ? t('search.searching') : t('search.resultCount', { n: groups.length })}
+        {!searching && groups.some((g) => !g.isSolo) && <span style={{ marginLeft: 10, color: '#847d68' }}>· {t('search.groupHint')}</span>}
       </div>
 
       {results.length === 0 && !searching ? (
@@ -113,18 +153,54 @@ export default function SearchPage() {
             </tr>
           </thead>
           <tbody>
-            {results.map((s) => (
-              <tr key={s.id} onClick={() => openDetail(s)} style={{ cursor: 'pointer' }}>
-                <td className="code-cell">{s.code}</td>
-                <td><span className={`crop-tag ${cropTagClass(s.crop)}`}>{s.crop || '-'}</span></td>
-                <td>{s.variety || '-'}</td>
-                <td>{s.harvest_year || '-'}</td>
-                <td>{s.location || '-'}</td>
-                <td style={{ color: Number(s.qty_g) <= 50 ? 'var(--danger)' : 'var(--ok)', fontWeight: 600 }}>
-                  {Number(s.qty_g) || 0} g
-                </td>
-              </tr>
-            ))}
+            {groups.map((g) => {
+              const open = expanded.has(g.base) || groups.length === 1;
+              if (g.isSolo) {
+                const s = g.members[0];
+                return (
+                  <tr key={s.id} onClick={() => openDetail(s)} style={{ cursor: 'pointer' }}>
+                    <td className="code-cell">{s.code}</td>
+                    <td><span className={`crop-tag ${cropTagClass(s.crop)}`}>{s.crop || '-'}</span></td>
+                    <td>{s.variety || '-'}</td>
+                    <td>{s.harvest_year || '-'}</td>
+                    <td>{s.location || '-'}</td>
+                    <td style={{ color: Number(s.qty_g) <= 50 ? 'var(--danger)' : 'var(--ok)', fontWeight: 600 }}>
+                      {Number(s.qty_g) || 0} g
+                    </td>
+                  </tr>
+                );
+              }
+              return [
+                <tr key={`g-${g.base}`} onClick={() => toggleGroup(g.base)} style={{ cursor: 'pointer', background: open ? 'var(--paper-dark)' : undefined }}>
+                  <td className="code-cell">
+                    <span style={{ display: 'inline-block', width: 14, color: '#847d68' }}>{open ? '▾' : '▸'}</span>
+                    {g.base}
+                    <div className="mono" style={{ fontSize: 10.5, color: '#847d68', marginLeft: 14 }}>
+                      {t('search.groupCount', { n: g.members.length })}
+                      {g.bulk ? ` · ${t('search.groupBulk', { n: g.bulk })}` : ''}
+                      {g.single ? ` · ${t('search.groupSingle', { n: g.single })}` : ''}
+                    </div>
+                  </td>
+                  <td><span className={`crop-tag ${cropTagClass(g.crop)}`}>{g.crop || '-'}</span></td>
+                  <td>{g.varieties.join(', ') || '-'}</td>
+                  <td>{g.years.length ? (g.years.length === 1 ? g.years[0] : `${g.years[0]}~${g.years[g.years.length - 1]}`) : '-'}</td>
+                  <td>{g.locations.length ? g.locations.slice(0, 2).join(', ') + (g.locations.length > 2 ? ' …' : '') : '-'}</td>
+                  <td style={{ fontWeight: 600 }}>{g.totalQty} g</td>
+                </tr>,
+                ...(open ? g.members.map((s) => (
+                  <tr key={s.id} onClick={() => openDetail(s)} style={{ cursor: 'pointer', fontSize: 13 }}>
+                    <td className="code-cell" style={{ paddingLeft: 30 }}>↳ {s.code}</td>
+                    <td><span className={`crop-tag ${cropTagClass(s.crop)}`}>{s.crop || '-'}</span></td>
+                    <td>{s.variety || '-'}{s.generation ? <span className="mono" style={{ fontSize: 11, color: '#847d68' }}> · {s.generation}</span> : ''}</td>
+                    <td>{s.harvest_year || '-'}</td>
+                    <td>{s.location || '-'}</td>
+                    <td style={{ color: Number(s.qty_g) <= 50 ? 'var(--danger)' : 'var(--ok)', fontWeight: 600 }}>
+                      {Number(s.qty_g) || 0} g
+                    </td>
+                  </tr>
+                )) : []),
+              ];
+            })}
           </tbody>
         </table>
       )}

@@ -3,7 +3,7 @@ import { useRouter } from 'next/router';
 import * as XLSX from 'xlsx';
 import { supabase } from '../lib/supabaseClient';
 import { useProfile } from '../lib/useProfile';
-import { computeLineage } from '../lib/lineage';
+import { computeLineage, recomputeDescendants, recomputeAll } from '../lib/lineage';
 import Nav from '../components/Nav';
 import { useLang } from '../lib/i18n';
 
@@ -32,6 +32,8 @@ export default function ManagePage() {
   const [manageQuery, setManageQuery] = useState('');
   const [exportBusy, setExportBusy] = useState(false);
   const [manageSort, setManageSort] = useState('desc');
+  const [recalcBusy, setRecalcBusy] = useState(false);
+  const [recalcMsg, setRecalcMsg] = useState(null);
 
   useEffect(() => {
     if (loading) return;
@@ -42,7 +44,44 @@ export default function ManagePage() {
   const loadSeeds = useCallback(async () => {
     const { data, error } = await supabase.from('seeds').select('*').order('created_at', { ascending: false }).limit(5000);
     if (!error) setAllSeeds(data || []);
+    return error ? null : (data || []);
   }, []);
+
+  // 계산된 세대/Pedigree 변경분을 데이터베이스에 저장
+  async function applyLineageUpdates(updates) {
+    let done = 0;
+    for (const u of updates) {
+      const { error } = await supabase.from('seeds')
+        .update({ generation: u.generation, pedigree: u.pedigree, fixed_line: u.fixed_line })
+        .eq('id', u.id);
+      if (!error) done++;
+    }
+    return done;
+  }
+
+  // 저장한 종자(startCodes) 아래의 뒷세대 종자들을 다시 계산해서 저장
+  async function propagateDescendants(startCodes) {
+    const fresh = await loadSeeds();
+    if (!fresh) return 0;
+    const updates = recomputeDescendants(startCodes, fresh);
+    if (updates.length === 0) return 0;
+    const done = await applyLineageUpdates(updates);
+    await loadSeeds();
+    return done;
+  }
+
+  // 전체 계보 다시 계산 (기존 데이터 정리용)
+  async function handleRecalcAll() {
+    if (!window.confirm(t('manage.recalcConfirm'))) return;
+    setRecalcBusy(true);
+    setRecalcMsg(null);
+    const fresh = await loadSeeds();
+    const updates = fresh ? recomputeAll(fresh) : [];
+    const done = await applyLineageUpdates(updates);
+    await loadSeeds();
+    setRecalcMsg({ type: 'ok', text: t('manage.recalcResult', { n: done }) });
+    setRecalcBusy(false);
+  }
 
   useEffect(() => {
     if (isStaff || isSupervisor || isDeveloper) loadSeeds();
@@ -88,7 +127,7 @@ export default function ManagePage() {
     e.preventDefault();
     setFormMsg(null);
 
-    if (!form.code.trim() || !form.crop.trim() || !form.variety.trim() || !form.location.trim()) {
+    if (!form.code.trim() || !form.crop.trim() || !form.variety.trim()) {
       setFormMsg({ type: 'err', text: t('manage.err.required') });
       return;
     }
@@ -145,9 +184,14 @@ export default function ManagePage() {
       });
     }
 
-    setFormMsg({ type: 'ok', text: t('manage.ok.saved') });
+    // 이 종자를 모종자로 둔 뒷세대가 먼저 등록돼 있으면 세대/Pedigree를 자동으로 다시 계산
+    const updatedCount = await propagateDescendants([record.code]);
+
     clearForm();
-    loadSeeds();
+    setFormMsg({
+      type: 'ok',
+      text: t('manage.ok.saved') + (updatedCount ? ' ' + t('manage.ok.descUpdated', { n: updatedCount }) : ''),
+    });
     setBusy(false);
   }
 
@@ -209,6 +253,8 @@ export default function ManagePage() {
     setBulkBusy(true);
     let workingSeeds = [...allSeeds]; // 붙여넣은 안에서 부모->자식 순서로 이어지는 걸 지원하기 위한 로컬 캐시
     let added = 0, updated = 0, skipped = 0, warnings = 0;
+    const failures = []; // 저장에 실패한 줄 (코드 + 이유)
+    const savedCodes = [];
 
     for (const line of lines) {
       const cols = line.split('\t');
@@ -251,7 +297,7 @@ export default function ManagePage() {
 
       if (existing && duplicateMode === 'overwrite') {
         const { data: updatedSeed, error } = await supabase.from('seeds').update(record).eq('id', existing.id).select().single();
-        if (error) { skipped++; continue; }
+        if (error) { skipped++; failures.push(`${code}: ${error.message}`); continue; }
         if (Number(existing.qty_g) !== rowQty) {
           await supabase.from('seed_transactions').insert({
             seed_id: existing.id, type: '정정', qty: rowQty - Number(existing.qty_g), qty_after: rowQty,
@@ -259,26 +305,32 @@ export default function ManagePage() {
           });
         }
         workingSeeds = workingSeeds.map((s) => (s.id === existing.id ? updatedSeed : s));
+        savedCodes.push(code);
         updated++;
         continue;
       }
 
       const { data: inserted, error } = await supabase.from('seeds').insert(record).select().single();
-      if (error) { skipped++; continue; }
+      if (error) { skipped++; failures.push(`${code}: ${error.message}`); continue; }
       await supabase.from('seed_transactions').insert({
         seed_id: inserted.id, type: '초기등록', qty: rowQty, qty_after: rowQty,
         by_user: profile.id, by_name: profile.name, note: '일괄 등록',
       });
       workingSeeds.push(inserted);
+      savedCodes.push(code);
       added++;
     }
 
+    // 붙여넣은 종자들 아래에 먼저 등록된 뒷세대가 있으면 자동으로 다시 계산
+    const descUpdated = savedCodes.length ? await propagateDescendants(savedCodes) : 0;
+
     setBulkMsg({
-      type: 'ok',
-      text: `${t('manage.bulkResult', { added, updated, skipped })}${warnings ? t('manage.bulkWarn', { n: warnings }) : ''}.`,
+      type: failures.length ? 'err' : 'ok',
+      text: `${t('manage.bulkResult', { added, updated, skipped })}${warnings ? t('manage.bulkWarn', { n: warnings }) : ''}.`
+        + (descUpdated ? ' ' + t('manage.ok.descUpdated', { n: descUpdated }) : '')
+        + (failures.length ? '\n' + t('manage.bulkFailures') + '\n' + failures.slice(0, 20).join('\n') : ''),
     });
-    setBulkText('');
-    loadSeeds();
+    if (!failures.length) setBulkText('');
     setBulkBusy(false);
   }
 
@@ -332,11 +384,18 @@ export default function ManagePage() {
                 {allSeeds.map((s) => <option key={s.id} value={s.code}>{s.variety}</option>)}
               </datalist>
               {lineage.parentMissing && (
-                <div style={{ fontSize: 12, color: 'var(--danger)', marginTop: 4 }}>{t('manage.parentMissing')}</div>
+                <div style={{ fontSize: 12, color: '#847d68', marginTop: 4 }}>{t('manage.parentMissing')}</div>
+              )}
+              {lineage.parentGenUnknown && (
+                <div style={{ fontSize: 12, color: '#847d68', marginTop: 4 }}>{t('manage.parentGenUnknown')}</div>
               )}
             </div>
 
-            {form.parentCode.trim() ? (
+            {form.parentCode.trim() && (lineage.parentMissing || lineage.parentGenUnknown) && (
+              <div className="field"><label>{t('manage.indivLabel')}</label><input value={form.individualNumber} onChange={(e) => setField('individualNumber', e.target.value)} placeholder={`${t('common.eg')} 3`} /></div>
+            )}
+
+            {form.parentCode.trim() && !lineage.parentMissing && !lineage.parentGenUnknown ? (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <div className="field"><label>{t('manage.indivLabel')}</label><input value={form.individualNumber} onChange={(e) => setField('individualNumber', e.target.value)} placeholder={`${t('common.eg')} 3`} /></div>
                 <div className="field">
@@ -393,17 +452,23 @@ export default function ManagePage() {
           <div style={{ marginTop: 10 }}>
             <button className="btn btn-primary" onClick={handleBulkImport} disabled={bulkBusy}>{bulkBusy ? t('manage.bulkBusy') : t('manage.bulkSubmit')}</button>
           </div>
-          {bulkMsg && <div className={`msg ${bulkMsg.type}`}>{bulkMsg.text}</div>}
+          {bulkMsg && <div className={`msg ${bulkMsg.type}`} style={{ whiteSpace: 'pre-line' }}>{bulkMsg.text}</div>}
         </div>
       </div>
 
       <div className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
           <h4 className="serif" style={{ margin: 0 }}>{t('manage.allTitle', { n: allSeeds.length })}</h4>
-          <button className="btn btn-ghost" onClick={handleExportExcel} disabled={exportBusy}>
-            {exportBusy ? t('manage.exporting') : t('manage.export')}
-          </button>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button className="btn btn-ghost" onClick={handleRecalcAll} disabled={recalcBusy}>
+              {recalcBusy ? t('manage.recalcBusy') : t('manage.recalc')}
+            </button>
+            <button className="btn btn-ghost" onClick={handleExportExcel} disabled={exportBusy}>
+              {exportBusy ? t('manage.exporting') : t('manage.export')}
+            </button>
+          </div>
         </div>
+        {recalcMsg && <div className={`msg ${recalcMsg.type}`}>{recalcMsg.text}</div>}
         <p style={{ fontSize: 11.5, color: '#847d68', marginTop: 6 }}>
           {t('manage.exportHelp')}
         </p>
