@@ -3,7 +3,7 @@ import { useRouter } from 'next/router';
 import * as XLSX from 'xlsx';
 import { supabase } from '../lib/supabaseClient';
 import { useProfile } from '../lib/useProfile';
-import { computeLineage, recomputeDescendants, recomputeAll } from '../lib/lineage';
+import { computeLineage, recomputeDescendants, recomputeAll, getIndividualFromCode } from '../lib/lineage';
 import Nav from '../components/Nav';
 import { useLang } from '../lib/i18n';
 
@@ -22,6 +22,7 @@ export default function ManagePage() {
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState(null); // 수정 중인 seed의 id (null이면 신규 등록)
   const [formMsg, setFormMsg] = useState(null);
+  const [indivManual, setIndivManual] = useState(false); // 개체번호를 직접 고쳤는지 (true면 코드에서 자동으로 덮어쓰지 않음)
   const [busy, setBusy] = useState(false);
 
   const [bulkText, setBulkText] = useState('');
@@ -52,7 +53,7 @@ export default function ManagePage() {
     let done = 0;
     for (const u of updates) {
       const { error } = await supabase.from('seeds')
-        .update({ generation: u.generation, pedigree: u.pedigree, fixed_line: u.fixed_line })
+        .update({ individual_number: u.individual_number, generation: u.generation, pedigree: u.pedigree, fixed_line: u.fixed_line })
         .eq('id', u.id);
       if (!error) done++;
     }
@@ -93,19 +94,32 @@ export default function ManagePage() {
   }, [form.code, allSeeds, editingId]);
 
   const lineage = useMemo(() => computeLineage({
+    code: form.code,
     parentCode: form.parentCode,
     individualNumber: form.individualNumber,
     manualGeneration: form.manualGeneration,
     manualPedigree: form.manualPedigree,
     seeds: allSeeds,
-  }), [form.parentCode, form.individualNumber, form.manualGeneration, form.manualPedigree, allSeeds]);
+  }), [form.code, form.parentCode, form.individualNumber, form.manualGeneration, form.manualPedigree, allSeeds]);
 
   function setField(key, value) {
-    setForm((f) => ({ ...f, [key]: value }));
+    setForm((f) => {
+      const next = { ...f, [key]: value };
+      // 종자 코드를 바꾸면, 개체번호를 직접 고치지 않은 경우 코드 끝에서 자동으로 채움
+      if (key === 'code' && !indivManual) next.individualNumber = getIndividualFromCode(value);
+      return next;
+    });
+  }
+
+  function setIndividual(value) {
+    // 칸을 비우면 다시 자동 모드로 돌아감
+    setIndivManual(value.trim() !== '');
+    setForm((f) => ({ ...f, individualNumber: value }));
   }
 
   function loadIntoForm(seed) {
     setEditingId(seed.id);
+    setIndivManual(!!seed.individual_number && seed.individual_number !== getIndividualFromCode(seed.code));
     setForm({
       code: seed.code, crop: seed.crop || '', variety: seed.variety || '', sci: seed.sci_name || '',
       harvestYear: seed.harvest_year || '', location: seed.location || '', qty: seed.qty_g ?? '',
@@ -119,6 +133,7 @@ export default function ManagePage() {
 
   function clearForm() {
     setEditingId(null);
+    setIndivManual(false);
     setForm(emptyForm);
     setFormMsg(null);
   }
@@ -268,6 +283,7 @@ export default function ManagePage() {
 
       const rowQty = Number((cols[6] || '').trim()) || 0;
       const rowLineage = computeLineage({
+        code,
         parentCode,
         individualNumber: (cols[11] || '').trim(),
         manualGeneration: (cols[12] || '').trim(),
@@ -288,7 +304,7 @@ export default function ManagePage() {
         origin_year: (cols[8] || '').trim(),
         region: (cols[9] || '').trim(),
         parent_code: parentCode || null,
-        individual_number: rowLineage.individualNumber || (cols[11] || '').trim(),
+        individual_number: rowLineage.individualNumber || '',
         generation: rowLineage.generation || '',
         pedigree: rowLineage.pedigree || '',
         fixed_line: !!rowLineage.fixedLine,
@@ -356,7 +372,7 @@ export default function ManagePage() {
           <form onSubmit={handleSave}>
             <div className="field">
               <label>{t('manage.codeLabel')}</label>
-              <input value={form.code} onChange={(e) => setField('code', e.target.value)} disabled={!!editingId} placeholder={`${t('common.eg')} RIC-2023-014`} />
+              <input value={form.code} onChange={(e) => setField('code', e.target.value)} disabled={!!editingId} placeholder={`${t('common.eg')} 52200-3 / 52200-B`} />
               {isDuplicateCode && <div style={{ fontSize: 12, color: 'var(--danger)', fontWeight: 600, marginTop: 4 }}>{t('manage.dupCode')}</div>}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
@@ -391,13 +407,16 @@ export default function ManagePage() {
               )}
             </div>
 
-            {form.parentCode.trim() && (lineage.parentMissing || lineage.parentGenUnknown) && (
-              <div className="field"><label>{t('manage.indivLabel')}</label><input value={form.individualNumber} onChange={(e) => setField('individualNumber', e.target.value)} placeholder={`${t('common.eg')} 3`} /></div>
-            )}
+            <div className="field">
+              <label>{t('manage.indivLabel')}</label>
+              <input value={form.individualNumber} onChange={(e) => setIndividual(e.target.value)} placeholder={t('manage.indivPlaceholder')} />
+              <div style={{ fontSize: 11.5, color: '#847d68', marginTop: 4 }}>
+                {indivManual ? t('manage.indivManual') : t('manage.indivAuto')}
+              </div>
+            </div>
 
             {form.parentCode.trim() && !lineage.parentMissing && !lineage.parentGenUnknown ? (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                <div className="field"><label>{t('manage.indivLabel')}</label><input value={form.individualNumber} onChange={(e) => setField('individualNumber', e.target.value)} placeholder={`${t('common.eg')} 3`} /></div>
+              <div>
                 <div className="field">
                   <label>{t('manage.autoGenLabel')}</label>
                   <div style={{ fontSize: 13.5, padding: '9px 11px', background: 'var(--paper-dark)', borderRadius: 6 }}>
@@ -434,7 +453,7 @@ export default function ManagePage() {
             value={bulkText}
             onChange={(e) => setBulkText(e.target.value)}
             style={{ minHeight: 140, fontFamily: 'IBM Plex Mono, monospace', fontSize: 12.5 }}
-            placeholder={"RIC-2024-001\t벼\t새일미\tOryza sativa\t2024\t냉장고1-선반1-01\t1200\t농촌진흥청\t2021\t세종 시험포장\tRIC-2021-003\t2\t\t\t"}
+            placeholder={"52200-3\t벼\t새일미\tOryza sativa\t2024\t\t1200\t농촌진흥청\t2021\t세종 시험포장\t51000-2\t\t\t\t"}
           />
           <div style={{ marginTop: 10, marginBottom: 10 }}>
             <label style={{ marginBottom: 6 }}>{t('manage.dupModeLabel')}</label>
