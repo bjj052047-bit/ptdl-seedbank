@@ -3,7 +3,7 @@ import { useRouter } from 'next/router';
 import * as XLSX from 'xlsx';
 import { supabase } from '../lib/supabaseClient';
 import { useProfile } from '../lib/useProfile';
-import { computeLineage, recomputeDescendants, recomputeAll, getIndividualFromCode } from '../lib/lineage';
+import { computeLineage, recomputeDescendants, recomputeAll, getIndividualFromCode, getBaseCode, isSelfParent } from '../lib/lineage';
 import Nav from '../components/Nav';
 import { useLang } from '../lib/i18n';
 
@@ -88,6 +88,17 @@ export default function ManagePage() {
     if (isStaff || isSupervisor || isDeveloper) loadSeeds();
   }, [isStaff, isSupervisor, isDeveloper, loadSeeds]);
 
+  // 모종자 코드 자동완성용 대표 코드 목록 (52200-1, 52200-B → 52200)
+  const groupCodes = useMemo(() => {
+    const codes = new Set(allSeeds.map((s) => s.code));
+    const counts = new Map();
+    for (const s of allSeeds) {
+      const base = getBaseCode(s.code);
+      if (base !== s.code && !codes.has(base)) counts.set(base, (counts.get(base) || 0) + 1);
+    }
+    return [...counts.entries()].map(([base, n]) => ({ base, n }));
+  }, [allSeeds]);
+
   const isDuplicateCode = useMemo(() => {
     if (editingId || !form.code.trim()) return false;
     return allSeeds.some((s) => s.code === form.code.trim());
@@ -150,7 +161,7 @@ export default function ManagePage() {
       setFormMsg({ type: 'err', text: t('manage.err.dup') });
       return;
     }
-    if (form.parentCode.trim() === form.code.trim()) {
+    if (isSelfParent(form.code, form.parentCode)) {
       setFormMsg({ type: 'err', text: t('manage.err.selfParent') });
       return;
     }
@@ -276,7 +287,7 @@ export default function ManagePage() {
       const code = (cols[0] || '').trim();
       if (!code) { skipped++; continue; }
       const parentCode = (cols[10] || '').trim();
-      if (parentCode === code) { skipped++; continue; }
+      if (isSelfParent(code, parentCode)) { skipped++; failures.push(`${code}: ${t('manage.err.selfParent')}`); continue; }
 
       const existing = workingSeeds.find((s) => s.code === code);
       if (existing && duplicateMode === 'skip') { skipped++; continue; }
@@ -397,10 +408,17 @@ export default function ManagePage() {
               <label>{t('manage.parentLabel')}</label>
               <input value={form.parentCode} onChange={(e) => setField('parentCode', e.target.value)} placeholder={`${t('common.eg')} MTH-2021-005`} list="parent-code-list" />
               <datalist id="parent-code-list">
+                {groupCodes.map((g) => <option key={`g-${g.base}`} value={g.base}>{t('manage.groupOption', { n: g.n })}</option>)}
                 {allSeeds.map((s) => <option key={s.id} value={s.code}>{s.variety}</option>)}
               </datalist>
               {lineage.parentMissing && (
                 <div style={{ fontSize: 12, color: '#847d68', marginTop: 4 }}>{t('manage.parentMissing')}</div>
+              )}
+              {lineage.parentGroup && (
+                <div style={{ fontSize: 12, color: 'var(--green-deep)', marginTop: 4 }}>{t('manage.parentGroup', { code: form.parentCode.trim(), n: lineage.parentGroup })}</div>
+              )}
+              {lineage.selfParent && (
+                <div style={{ fontSize: 12, color: 'var(--danger)', marginTop: 4 }}>{t('manage.err.selfParent')}</div>
               )}
               {lineage.parentGenUnknown && (
                 <div style={{ fontSize: 12, color: '#847d68', marginTop: 4 }}>{t('manage.parentGenUnknown')}</div>

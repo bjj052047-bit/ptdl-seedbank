@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabaseClient';
 import { useProfile } from '../lib/useProfile';
 import Nav from '../components/Nav';
 import { useLang, DICT } from '../lib/i18n';
-import { getBaseCode, compareMemberCodes } from '../lib/lineage';
+import { getBaseCode, compareMemberCodes, findGroupMembers } from '../lib/lineage';
 
 function cropTagClass(crop) {
   if (!crop) return 'crop-other';
@@ -25,6 +25,7 @@ export default function SearchPage() {
   const [selected, setSelected] = useState(null); // 선택된 종자 상세 (lineage 포함)
   const [detailLoading, setDetailLoading] = useState(false);
   const [expanded, setExpanded] = useState(() => new Set()); // 펼쳐진 대표 코드들
+  const [openGroup, setOpenGroup] = useState(null); // 상세 팝업에서 펼친 묶음 모종자 코드
 
   // 52200-B, 52200-1, 52200-2 ... 를 대표 코드 52200 하나로 묶기
   const groups = useMemo(() => {
@@ -88,7 +89,8 @@ export default function SearchPage() {
 
   async function openDetail(seed) {
     setDetailLoading(true);
-    setSelected({ seed, ancestors: [], children: [], transactions: [] });
+    setOpenGroup(null);
+    setSelected({ seed, ancestors: [], children: [], groupChildren: [], transactions: [] });
 
     // 조상 체인 (최대 20세대까지, 순환 참조 방지)
     const ancestors = [];
@@ -98,12 +100,33 @@ export default function SearchPage() {
       if (visited.has(currentCode)) break;
       visited.add(currentCode);
       const { data: parent } = await supabase.from('seeds').select('*').eq('code', currentCode).maybeSingle();
-      ancestors.push({ code: currentCode, seed: parent || null });
-      if (!parent) break;
-      currentCode = parent.parent_code;
+      if (parent) {
+        ancestors.push({ code: currentCode, seed: parent });
+        currentCode = parent.parent_code;
+        continue;
+      }
+      // 정확한 코드가 없으면 대표 코드 묶음(52200 → 52200-1, 52200-2, 52200-B …)인지 확인
+      const { data: candidates } = await supabase.from('seeds').select('*').like('code', `${currentCode}-%`);
+      const members = findGroupMembers(currentCode, candidates || []);
+      if (!members.length) {
+        ancestors.push({ code: currentCode, seed: null });
+        break;
+      }
+      ancestors.push({ code: currentCode, group: members });
+      // 묶음 구성 종자들이 가장 많이 가리키는 모종자로 계속 거슬러 올라감
+      const counts = new Map();
+      for (const m of members) if (m.parent_code) counts.set(m.parent_code, (counts.get(m.parent_code) || 0) + 1);
+      currentCode = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || null;
     }
 
     const { data: children } = await supabase.from('seeds').select('*').eq('parent_code', seed.code);
+    // 이 종자가 속한 묶음(52200)을 섞어 파종해서 얻은 종자
+    const base = getBaseCode(seed.code);
+    let groupChildren = [];
+    if (base !== seed.code) {
+      const { data } = await supabase.from('seeds').select('*').eq('parent_code', base);
+      groupChildren = data || [];
+    }
     const { data: transactions } = await supabase
       .from('seed_transactions')
       .select('*')
@@ -111,7 +134,7 @@ export default function SearchPage() {
       .order('created_at', { ascending: false })
       .limit(5);
 
-    setSelected({ seed, ancestors: ancestors.reverse(), children: children || [], transactions: transactions || [] });
+    setSelected({ seed, ancestors: ancestors.reverse(), children: children || [], groupChildren, transactions: transactions || [] });
     setDetailLoading(false);
   }
 
@@ -250,7 +273,23 @@ export default function SearchPage() {
               <div style={{ marginTop: 16 }}>
                 <div className="mono" style={{ fontSize: 11, color: '#736c58', textTransform: 'uppercase', marginBottom: 8 }}>{t('detail.lineage')}</div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 4 }}>
-                  {selected.ancestors.map((a, i) => (
+                  {selected.ancestors.map((a, i) => a.group ? (
+                    <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <button
+                        onClick={() => setOpenGroup(openGroup === a.code ? null : a.code)}
+                        style={{
+                          fontFamily: 'Inter,sans-serif', fontSize: 12.5, fontWeight: 600, color: 'var(--ink)',
+                          background: openGroup === a.code ? 'var(--paper-dark)' : '#fff',
+                          border: '1.5px solid var(--line)', borderRadius: 6, padding: '6px 10px',
+                          cursor: 'pointer', textAlign: 'left',
+                        }}
+                      >
+                        {openGroup === a.code ? '▾ ' : '▸ '}{t('detail.group', { n: a.group.length })}
+                        <div className="mono" style={{ fontSize: 10, color: '#847d68' }}>{a.code}</div>
+                      </button>
+                      <span style={{ color: '#a3987c' }}>→</span>
+                    </span>
+                  ) : (
                     <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                       <button
                         onClick={() => a.seed && openDetail(a.seed)}
@@ -275,6 +314,46 @@ export default function SearchPage() {
                     {selected.seed.variety || '-'}
                     <div className="mono" style={{ fontSize: 10, color: 'rgba(255,255,255,0.75)' }}>{selected.seed.code} · {t('detail.current')}</div>
                   </span>
+                </div>
+              </div>
+            )}
+
+            {!detailLoading && openGroup && (() => {
+              const g = selected.ancestors.find((a) => a.code === openGroup && a.group);
+              if (!g) return null;
+              return (
+                <div style={{ marginTop: 10, padding: 10, background: 'var(--paper-dark)', borderRadius: 6 }}>
+                  <div className="mono" style={{ fontSize: 11, color: '#736c58', marginBottom: 6 }}>{t('detail.groupMembers', { code: g.code })}</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {g.group.map((m) => (
+                      <button key={m.id} onClick={() => openDetail(m)} style={{ fontSize: 12, fontWeight: 600, background: '#fff', border: '1px solid var(--line)', borderRadius: 14, padding: '5px 11px', cursor: 'pointer' }}>
+                        {m.code}{m.generation ? ` · ${m.generation}` : ''}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {!detailLoading && selected.groupChildren.length > 0 && (
+              <div style={{ marginTop: 16 }}>
+                <div className="mono" style={{ fontSize: 11, color: '#736c58', marginBottom: 8 }}>
+                  {t('detail.groupChildren', { code: getBaseCode(selected.seed.code), n: selected.groupChildren.length })}
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {selected.groupChildren.map((c) => (
+                    <button
+                      key={c.id}
+                      onClick={() => openDetail(c)}
+                      style={{
+                        fontFamily: 'Inter,sans-serif', fontSize: 12, fontWeight: 600, color: 'var(--plum)',
+                        background: 'rgba(122,59,70,0.08)', border: '1px dashed rgba(122,59,70,0.4)',
+                        borderRadius: 14, padding: '5px 11px', cursor: 'pointer',
+                      }}
+                    >
+                      {c.variety || '-'} ({c.code})
+                    </button>
+                  ))}
                 </div>
               </div>
             )}
