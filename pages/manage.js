@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/router';
 import * as XLSX from 'xlsx';
 import { supabase } from '../lib/supabaseClient';
+import { fetchAll } from '../lib/fetchAll';
 import { useProfile } from '../lib/useProfile';
 import { computeLineage, recomputeDescendants, recomputeAll, getIndividualFromCode, getBaseCode, isSelfParent } from '../lib/lineage';
 import Nav from '../components/Nav';
@@ -43,7 +44,8 @@ export default function ManagePage() {
   }, [session, isStaff, isSupervisor, isDeveloper, loading, router]);
 
   const loadSeeds = useCallback(async () => {
-    const { data, error } = await supabase.from('seeds').select('*').order('created_at', { ascending: false }).limit(5000);
+    // 1000건이 넘어도 전부 가져오도록 나눠서 불러옴
+    const { data, error } = await fetchAll(() => supabase.from('seeds').select('*').order('created_at', { ascending: false }).order('id'));
     if (!error) setAllSeeds(data || []);
     return error ? null : (data || []);
   }, []);
@@ -232,9 +234,9 @@ export default function ManagePage() {
     setExportBusy(true);
     try {
       const [{ data: seedsData }, { data: txData }, { data: reqData }] = await Promise.all([
-        supabase.from('seeds').select('*').order('code'),
-        supabase.from('seed_transactions').select('*, seeds(code)').order('created_at', { ascending: false }),
-        supabase.from('seed_requests').select('*, seeds(code)').order('created_at', { ascending: false }),
+        fetchAll(() => supabase.from('seeds').select('*').order('code').order('id')),
+        fetchAll(() => supabase.from('seed_transactions').select('*, seeds(code)').order('created_at', { ascending: false }).order('id')),
+        fetchAll(() => supabase.from('seed_requests').select('*, seeds(code)').order('created_at', { ascending: false }).order('id')),
       ]);
 
       const seedsSheet = (seedsData || []).map((s) => ({
