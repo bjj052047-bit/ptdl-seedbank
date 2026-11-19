@@ -11,6 +11,7 @@ const STATUS_COLOR = {
   approved: { bg: 'rgba(63,93,58,0.14)', fg: 'var(--green-deep)' },
   fulfilled: { bg: 'rgba(63,93,58,0.14)', fg: 'var(--green-deep)' },
   rejected: { bg: 'rgba(163,63,63,0.14)', fg: 'var(--danger)' },
+  cancelled: { bg: 'rgba(120,114,98,0.15)', fg: '#6b6553' },
 };
 
 // 100립 = 2g 기준 (1립 = 0.02g). 작물마다 실제 립당 무게는 다르지만,
@@ -67,6 +68,10 @@ export default function RequestsPage() {
   const [editNote, setEditNote] = useState('');
   const [editMsg, setEditMsg] = useState(null);
 
+  // 거절 사유 입력 (승인자/담당자 공용)
+  const [rejectingId, setRejectingId] = useState(null);
+  const [rejectReason, setRejectReason] = useState('');
+
   useEffect(() => {
     if (loading) return;
     if (!session) { router.replace('/login'); return; }
@@ -119,6 +124,7 @@ export default function RequestsPage() {
     if (!foundSeed) { setFormMsg({ type: 'err', text: t('common.enterValidCode') }); return; }
     const qtyNum = Number(qty);
     if (!qtyNum || qtyNum <= 0) { setFormMsg({ type: 'err', text: t('common.qtyPositive') }); return; }
+    if (!note.trim()) { setFormMsg({ type: 'err', text: t('req.err.noteRequired') }); return; }
 
     setBusy(true);
     const { error } = await supabase.from('seed_requests').insert({
@@ -134,17 +140,44 @@ export default function RequestsPage() {
   }
 
   // 승인자: 승인 / 거절
+  // 거절: 사유 입력 칸 열기
+  function startReject(req) {
+    setEditingReqId(null);
+    setRejectingId(req.id);
+    setRejectReason('');
+  }
+
+  // 거절 확정 (사유와 함께 저장)
+  async function confirmReject(req) {
+    setActingId(req.id);
+    const { error } = await supabase.from('seed_requests').update({
+      status: 'rejected', reject_reason: rejectReason.trim() || null,
+      processed_by: profile.id, processed_at: new Date().toISOString(),
+    }).eq('id', req.id);
+    setActingId(null);
+    if (error) { alert(t('common.saveFailed', { msg: error.message })); return; }
+    setRejectingId(null);
+    setRejectReason('');
+    loadRequests();
+  }
+
+  // 요청자: 승인 전(대기중) 요청 취소
+  async function handleCancel(req) {
+    if (!window.confirm(t('req.confirmCancel', { code: req.seeds?.code || '' }))) return;
+    setActingId(req.id);
+    // status가 아직 pending일 때만 바뀌도록 조건을 걸어서, 그 사이 승인됐으면 취소되지 않게 함
+    const { data, error } = await supabase.from('seed_requests')
+      .update({ status: 'cancelled', processed_at: new Date().toISOString() })
+      .eq('id', req.id).eq('requester_id', profile.id).eq('status', 'pending')
+      .select();
+    setActingId(null);
+    if (error) { alert(t('req.err.cancel', { msg: error.message })); return; }
+    if (!data || data.length === 0) alert(t('req.err.cancelTooLate'));
+    loadRequests();
+  }
+
   async function handleApproval(req, action) {
-    if (action === 'reject') {
-      if (!window.confirm(t('req.confirmReject'))) return;
-      setActingId(req.id);
-      await supabase.from('seed_requests').update({
-        status: 'rejected', processed_by: profile.id, processed_at: new Date().toISOString(),
-      }).eq('id', req.id);
-      loadRequests();
-      setActingId(null);
-      return;
-    }
+    if (action === 'reject') { startReject(req); return; }
     if (!window.confirm(t('req.confirmApprove', { code: req.seeds?.code, qty: displayQty(req.qty_requested, req.qty_unit, t) }))) return;
     setActingId(req.id);
     await supabase.from('seed_requests').update({
@@ -156,16 +189,7 @@ export default function RequestsPage() {
 
   // 담당자: 출고 처리 / 거절
   async function handleFulfillment(req, action) {
-    if (action === 'reject') {
-      if (!window.confirm(t('req.confirmReject'))) return;
-      setActingId(req.id);
-      await supabase.from('seed_requests').update({
-        status: 'rejected', processed_by: profile.id, processed_at: new Date().toISOString(),
-      }).eq('id', req.id);
-      loadRequests();
-      setActingId(null);
-      return;
-    }
+    if (action === 'reject') { startReject(req); return; }
 
     const { data: seed } = await supabase.from('seeds').select('*').eq('id', req.seed_id).maybeSingle();
     if (!seed) { alert(t('req.err.seedMissing')); return; }
@@ -195,6 +219,7 @@ export default function RequestsPage() {
   }
 
   function startEdit(req) {
+    setRejectingId(null);
     setEditingReqId(req.id);
     setEditCode(req.seeds?.code || '');
     setEditQty(req.qty_requested);
@@ -210,6 +235,7 @@ export default function RequestsPage() {
     const qtyNum = Number(editQty);
     if (!code) { setEditMsg({ type: 'err', text: t('req.err.enterCode') }); return; }
     if (!qtyNum || qtyNum <= 0) { setEditMsg({ type: 'err', text: t('common.qtyPositive') }); return; }
+    if (!editNote.trim()) { setEditMsg({ type: 'err', text: t('req.err.noteRequired') }); return; }
     const { data: seed } = await supabase.from('seeds').select('id').eq('code', code).maybeSingle();
     if (!seed) { setEditMsg({ type: 'err', text: t('common.seedNotFound') }); return; }
     const { error } = await supabase.from('seed_requests').update({
@@ -220,9 +246,10 @@ export default function RequestsPage() {
     loadRequests();
   }
 
-  function EditRow({ req, onSave }) {
+  // 주의: 컴포넌트(<EditRow />)로 만들면 글자를 칠 때마다 입력칸이 새로 만들어져 커서가 빠지므로 함수로 그림
+  function renderEditRow(req, onSave) {
     return (
-      <tr>
+      <tr key={req.id}>
         <td colSpan={7}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 2fr auto auto', gap: 8, alignItems: 'end', padding: '8px 0' }}>
             <div className="field" style={{ margin: 0 }}><label>{t('field.code')}</label><input value={editCode} onChange={(e) => setEditCode(e.target.value)} /></div>
@@ -238,6 +265,38 @@ export default function RequestsPage() {
           {editMsg && <div className={`msg ${editMsg.type}`}>{editMsg.text}</div>}
         </td>
       </tr>
+    );
+  }
+
+  function renderRejectRow(req) {
+    return (
+      <tr key={req.id}>
+        <td colSpan={7}>
+          <div style={{ fontSize: 12.5, marginBottom: 6 }}>
+            <b>{req.seeds?.code}</b> {req.seeds?.variety ? `(${req.seeds.variety})` : ''} · {req.requester_name} · {displayQty(req.qty_requested, req.qty_unit, t)}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 8, alignItems: 'end' }}>
+            <div className="field" style={{ margin: 0 }}>
+              <label>{t('req.rejectReasonLabel')}</label>
+              <input autoFocus value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} placeholder={t('req.rejectReasonPlaceholder')} />
+            </div>
+            <button className="btn btn-danger" style={{ padding: '9px 14px' }} disabled={actingId === req.id} onClick={() => confirmReject(req)}>{t('req.rejectConfirm')}</button>
+            <button className="btn btn-ghost" style={{ padding: '9px 14px' }} onClick={() => setRejectingId(null)}>{t('common.cancel')}</button>
+          </div>
+        </td>
+      </tr>
+    );
+  }
+
+  // 상태 + (거절됐으면) 거절 사유
+  function renderStatus(r) {
+    return (
+      <>
+        <StatusBadge status={r.status} />
+        {r.status === 'rejected' && r.reject_reason && (
+          <div style={{ fontSize: 11.5, color: 'var(--danger)', marginTop: 4 }}>{t('req.rejectReasonShow', { reason: r.reject_reason })}</div>
+        )}
+      </>
     );
   }
 
@@ -306,17 +365,23 @@ export default function RequestsPage() {
       <div className="card">
         <h4 className="serif" style={{ marginTop: 0 }}>{t('req.myTitle', { n: myRequests.length })}</h4>
         <table>
-          <thead><tr><th>{t('req.date')}</th><th>{t('field.code')}</th><th>{t('req.qty')}</th><th>{t('req.reason')}</th><th>{t('req.status')}</th></tr></thead>
+          <thead><tr><th>{t('req.date')}</th><th>{t('field.code')}</th><th>{t('field.varietyShort')}</th><th>{t('req.qty')}</th><th>{t('req.reason')}</th><th>{t('req.status')}</th><th></th></tr></thead>
           <tbody>
             {myRequests.length === 0 ? (
-              <tr><td colSpan={5} style={{ textAlign: 'center', color: '#847d68', padding: 20 }}>{t('req.noMine')}</td></tr>
+              <tr><td colSpan={7} style={{ textAlign: 'center', color: '#847d68', padding: 20 }}>{t('req.noMine')}</td></tr>
             ) : myRequests.map((r) => (
               <tr key={r.id}>
                 <td>{fmtDate(r.created_at)}</td>
                 <td className="code-cell">{r.seeds?.code || '-'}</td>
+                <td>{r.seeds?.variety || '-'}</td>
                 <td>{displayQty(r.qty_requested, r.qty_unit, t)}</td>
                 <td>{r.note || '-'}</td>
-                <td><StatusBadge status={r.status} /></td>
+                <td>{renderStatus(r)}</td>
+                <td>
+                  {r.status === 'pending' && (
+                    <button className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }} disabled={actingId === r.id} onClick={() => handleCancel(r)}>{t('req.cancelRequest')}</button>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -333,7 +398,7 @@ export default function RequestsPage() {
               <thead><tr><th>{t('req.date')}</th><th>{t('field.code')}</th><th>{t('field.varietyShort')}</th><th>{t('req.requester')}</th><th>{t('req.qty')}</th><th>{t('req.reason')}</th><th></th></tr></thead>
               <tbody>
                 {awaitingApproval.map((r) => (
-                  editingReqId === r.id ? <EditRow key={r.id} req={r} onSave={saveEdit} /> : (
+                  editingReqId === r.id ? renderEditRow(r, saveEdit) : rejectingId === r.id ? renderRejectRow(r) : (
                     <tr key={r.id}>
                       <td>{fmtDate(r.created_at)}</td>
                       <td className="code-cell">{r.seeds?.code || '-'}</td>
@@ -366,7 +431,7 @@ export default function RequestsPage() {
               <thead><tr><th>{t('req.date')}</th><th>{t('field.code')}</th><th>{t('field.varietyShort')}</th><th>{t('req.requester')}</th><th>{t('req.qty')}</th><th>{t('req.reason')}</th><th></th></tr></thead>
               <tbody>
                 {awaitingFulfillment.map((r) => (
-                  editingReqId === r.id ? <EditRow key={r.id} req={r} onSave={saveEdit} /> : (
+                  editingReqId === r.id ? renderEditRow(r, saveEdit) : rejectingId === r.id ? renderRejectRow(r) : (
                     <tr key={r.id}>
                       <td>{fmtDate(r.created_at)}</td>
                       <td className="code-cell">{r.seeds?.code || '-'}</td>
@@ -391,17 +456,18 @@ export default function RequestsPage() {
       <div className="card">
         <h4 className="serif" style={{ marginTop: 0 }}>{t('req.allTitle')}</h4>
         <table>
-          <thead><tr><th>{t('req.date')}</th><th>{t('field.code')}</th><th>{t('req.requester')}</th><th>{t('req.qty')}</th><th>{t('req.status')}</th></tr></thead>
+          <thead><tr><th>{t('req.date')}</th><th>{t('field.code')}</th><th>{t('field.varietyShort')}</th><th>{t('req.requester')}</th><th>{t('req.qty')}</th><th>{t('req.status')}</th></tr></thead>
           <tbody>
             {requests.length === 0 ? (
-              <tr><td colSpan={5} style={{ textAlign: 'center', color: '#847d68', padding: 20 }}>{t('req.noAll')}</td></tr>
+              <tr><td colSpan={6} style={{ textAlign: 'center', color: '#847d68', padding: 20 }}>{t('req.noAll')}</td></tr>
             ) : requests.map((r) => (
               <tr key={r.id}>
                 <td>{fmtDate(r.created_at)}</td>
                 <td className="code-cell">{r.seeds?.code || '-'}</td>
+                <td>{r.seeds?.variety || '-'}</td>
                 <td>{r.requester_name}</td>
                 <td>{displayQty(r.qty_requested, r.qty_unit, t)}</td>
-                <td><StatusBadge status={r.status} /></td>
+                <td>{renderStatus(r)}</td>
               </tr>
             ))}
           </tbody>
