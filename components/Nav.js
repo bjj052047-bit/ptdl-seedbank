@@ -16,6 +16,7 @@ export default function Nav({ profile, isStaff, isSupervisor, isDeveloper }) {
     { href: '/requests', label: t('nav.tab.requests'), staffOnly: false, adminOnly: false },
     { href: '/reservations', label: t('nav.tab.reservations'), staffOnly: false, adminOnly: false },
     { href: '/beds', label: t('nav.tab.beds'), staffOnly: false, adminOnly: false },
+    { href: '/board', label: t('nav.tab.board'), staffOnly: false, adminOnly: false },
     { href: '/io', label: t('nav.tab.io'), staffOnly: true, adminOnly: false },
     { href: '/manage', label: t('nav.tab.manage'), staffOnly: true, adminOnly: false },
     { href: '/approvals', label: t('nav.tab.approvals'), staffOnly: false, adminOnly: true },
@@ -59,7 +60,7 @@ export default function Nav({ profile, isStaff, isSupervisor, isDeveloper }) {
           .filter((t) => !t.adminOnly || canApprove)
           .filter((t) => !t.devOnly || isDeveloper)
           .map((t) => (
-            <Link key={t.href} href={t.href} className={router.pathname === t.href ? 'active' : ''}>
+            <Link key={t.href} href={t.href} className={router.pathname === t.href || (t.href !== '/' && router.pathname.startsWith(t.href + '/')) ? 'active' : ''}>
               {t.label}
             </Link>
           ))}

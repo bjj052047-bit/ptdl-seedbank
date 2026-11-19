@@ -211,3 +211,58 @@ nav.tabs a.active {
 .cal-cell-mini .cal-occ-count {
   font-size: 11px; font-weight: 700; color: var(--plum);
 }
+
+
+/* ============================================================
+   게시판
+   ============================================================ */
+.board-cats { display: flex; gap: 6px; flex-wrap: wrap; }
+.board-cats button {
+  font-family: inherit; font-size: 13px; font-weight: 600; padding: 7px 14px; border-radius: 16px;
+  border: 1px solid var(--line); background: #fff; color: #5c574a; cursor: pointer;
+}
+.board-cats button.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+
+.board-table td.board-num, .board-table th.board-num { width: 70px; text-align: center; color: #847d68; font-size: 13px; }
+.board-table tr.board-pinned { background: #fbf6ea; }
+.board-table tr.board-pinned:hover { background: #f7efdc; }
+.board-title-cell { word-break: break-word; }
+.board-show-sm { display: none; }
+
+.board-pager { display: flex; justify-content: center; gap: 4px; margin: 16px 0; flex-wrap: wrap; }
+.board-pager button {
+  min-width: 34px; height: 34px; border: 1px solid var(--line); background: #fff; border-radius: 6px;
+  cursor: pointer; font-family: inherit; font-size: 13px; color: var(--ink);
+}
+.board-pager button.active { background: var(--green-deep); color: #fff; border-color: var(--green-deep); font-weight: 700; }
+.board-pager button:disabled { opacity: 0.35; cursor: default; }
+
+.board-search { display: flex; justify-content: center; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.board-search input { max-width: 320px; }
+
+.board-files { background: var(--paper); border-radius: 6px; padding: 10px 12px; margin-bottom: 12px; }
+.board-file-link {
+  display: block; width: 100%; text-align: left; background: none; border: none; padding: 4px 0;
+  font-family: inherit; font-size: 13.5px; font-weight: 600; color: var(--green-deep); cursor: pointer; word-break: break-all;
+}
+.board-file-link:hover { text-decoration: underline; }
+
+.board-admin {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  border: 1px dashed var(--line); border-radius: 6px; padding: 8px 12px; margin-top: 6px; font-size: 12.5px;
+}
+
+.board-file-list { list-style: none; padding: 0; margin: 10px 0 0; }
+.board-file-list li {
+  display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  padding: 6px 10px; border: 1px solid #eee5d0; border-radius: 6px; margin-bottom: 4px; font-size: 13px; word-break: break-all;
+}
+.board-file-list li small { color: #847d68; }
+.board-file-list li button { background: none; border: none; color: var(--danger); cursor: pointer; font-size: 12px; white-space: nowrap; }
+
+@media (max-width: 640px) {
+  .board-hide-sm { display: none; }
+  .board-show-sm { display: block; }
+  .board-table td.board-num, .board-table th.board-num { width: 48px; }
+  .board-write-head { grid-template-columns: 1fr !important; }
+}
